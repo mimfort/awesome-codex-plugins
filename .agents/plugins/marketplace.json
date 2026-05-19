@@ -266,6 +266,13 @@
       "description": "MCP server exposing reasoning, code, anti-deception, and memory harness tools for Codex."
     },
     {
+      "name": "Espresso",
+      "description": "Full token-saving stack - output compression, global rules, RTK hook, Caveman ultra, GitNexus config. Detects existing setup, installs only what is missing.",
+      "install_url": "https://raw.githubusercontent.com/mirkobozzetto/espresso/HEAD/.codex-plugin/plugin.json",
+      "source_url": "https://github.com/mirkobozzetto/espresso",
+      "category": "Development & Workflow"
+    },
+    {
       "name": "frappe-agent",
       "displayName": "Frappe Agent",
       "source": {
@@ -1163,5 +1170,6 @@
       "description": "GitHub-ready Codex plugin bundle for Yandex Direct, Wordstat, Metrika, and Roistat.",
       "icon": "./plugins/nebelov/yandex-direct-for-all/assets/icon.png"
     }
-  ]
+  ],
+  "total": 81
 }

@@ -3,7 +3,7 @@
   "name": "awesome-codex-plugins",
   "version": "1.0.0",
   "last_updated": "2026-05-18",
-  "total": 80,
+  "total": 81,
   "categories": [
     "Development & Workflow",
     "Tools & Integrations"
@@ -188,6 +188,16 @@
       "category": "Development & Workflow",
       "source": "awesome-codex-plugins",
       "install_url": "https://raw.githubusercontent.com/ejentum/ejentum-mcp/HEAD/.codex-plugin/plugin.json"
+    },
+    {
+      "name": "Espresso",
+      "url": "https://github.com/mirkobozzetto/espresso",
+      "owner": "mirkobozzetto",
+      "repo": "espresso",
+      "description": "Full token-saving stack - output compression, global rules, RTK hook, Caveman ultra, GitNexus config. Detects existing setup, installs only what is missing.",
+      "category": "Development & Workflow",
+      "source": "awesome-codex-plugins",
+      "install_url": "https://raw.githubusercontent.com/mirkobozzetto/espresso/HEAD/.codex-plugin/plugin.json"
     },
     {
       "name": "Frappe Agent",
