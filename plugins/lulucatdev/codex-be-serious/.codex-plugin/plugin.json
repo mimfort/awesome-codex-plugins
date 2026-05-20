@@ -10,7 +10,15 @@
   "homepage": "https://github.com/lulucatdev/codex-be-serious",
   "repository": "https://github.com/lulucatdev/codex-be-serious",
   "license": "MIT",
-  "keywords": ["formal", "register", "writing", "style", "textbook", "prose", "chinese"],
+  "keywords": [
+    "formal",
+    "register",
+    "writing",
+    "style",
+    "textbook",
+    "prose",
+    "chinese"
+  ],
   "skills": "./skills/",
   "hooks": "./hooks.json",
   "interface": {
@@ -19,7 +27,9 @@
     "longDescription": "Constrains all natural-language output to the register of a well-edited university textbook. Prohibits slang, sycophantic expressions, enthusiasm markers, filler phrases, anthropomorphization, forced informality, and Chinese colloquial buzzwords (闭环, 痛点, 砍一刀, 拍板, etc.). Includes calibration examples in English and Chinese, plus self-monitoring instructions.",
     "developerName": "lulucatdev",
     "category": "Productivity",
-    "capabilities": ["Interactive"],
+    "capabilities": [
+      "Interactive"
+    ],
     "websiteURL": "https://github.com/lulucatdev/codex-be-serious",
     "privacyPolicyURL": "https://github.com/lulucatdev/codex-be-serious/blob/main/LICENSE",
     "termsOfServiceURL": "https://github.com/lulucatdev/codex-be-serious/blob/main/LICENSE",

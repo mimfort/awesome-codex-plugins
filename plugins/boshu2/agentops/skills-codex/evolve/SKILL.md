@@ -268,8 +268,29 @@ Run at the TOP of every cycle:
 
 ```bash
 CYCLE_START_SHA=$(git rev-parse HEAD)
-[ -f ~/.config/evolve/KILL ] && echo "KILL: $(cat ~/.config/evolve/KILL)" && exit 0
-[ -f .agents/evolve/STOP ] && echo "STOP: $(cat .agents/evolve/STOP 2>/dev/null)" && exit 0
+# Stale-kill auto-expire (closes F5 from 2026-05-18 post-mortem).
+# A KILL/STOP file older than EVOLVE_KILL_TTL_DAYS (default 7) is treated as
+# stale and surfaced loudly; the loop proceeds. Re-touch to keep blocking.
+EVOLVE_KILL_TTL_DAYS="${EVOLVE_KILL_TTL_DAYS:-7}"
+check_stale_kill() {
+    local path="$1" ttl_days="$2"
+    [ -f "$path" ] || return 1
+    local mtime_epoch now_epoch age_days
+    mtime_epoch=$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path" 2>/dev/null)
+    now_epoch=$(date +%s)
+    age_days=$(( (now_epoch - mtime_epoch) / 86400 ))
+    if [ "$age_days" -gt "$ttl_days" ]; then
+        echo "WARN: ${path} is ${age_days} days old (> ${ttl_days}); STALE, proceeding." >&2
+        return 1
+    fi
+    return 0
+}
+if check_stale_kill ~/.config/evolve/KILL "$EVOLVE_KILL_TTL_DAYS"; then
+    echo "KILL: $(cat ~/.config/evolve/KILL)"; exit 0
+fi
+if check_stale_kill .agents/evolve/STOP "$EVOLVE_KILL_TTL_DAYS"; then
+    echo "STOP: $(cat .agents/evolve/STOP 2>/dev/null)"; exit 0
+fi
 ```
 
 ### Step 2: Measure Fitness
@@ -613,6 +634,8 @@ When a cycle edits an evolve `SKILL.md`, record the falsifiable claim through
 `ao loop hypothesis append` (read it back with `ao loop hypothesis list`).
 See `references/convergence-mechanics.md` for all four compounding mechanisms.
 
+**Mandatory checkpoint #6 — session-PR threshold (NOT terminal, gates next cycle):** at `session_pr_count >= 5` (soc-waxr default), invoke `$post-mortem --deep`, wait for verdict file. PASS → continue. WARN → continue with caveat in next cycle's `notes`. FAIL or non-convergence → write STOP citing the verdict path. Agent MUST NOT self-grade or self-write STOP. Full procedure: `references/postmortem-checkpoint.md` (soc-n75z).
+
 Push only when productive work has accumulated:
 ```bash
 if [ $((PRODUCTIVE_THIS_SESSION % 5)) -eq 0 ] && [ "$PRODUCTIVE_THIS_SESSION" -gt 0 ]; then
@@ -743,6 +766,7 @@ See `references/cycle-history.md` for advanced troubleshooting.
 - [references/goals-schema.md](references/goals-schema.md)
 - [references/oscillation.md](references/oscillation.md)
 - [references/parallel-execution.md](references/parallel-execution.md)
+- [references/postmortem-checkpoint.md](references/postmortem-checkpoint.md)
 - [references/quality-mode.md](references/quality-mode.md)
 - [references/teardown.md](references/teardown.md)
 
@@ -758,6 +782,7 @@ See `references/cycle-history.md` for advanced troubleshooting.
 - [references/goals-schema.md](references/goals-schema.md)
 - [references/oscillation.md](references/oscillation.md)
 - [references/parallel-execution.md](references/parallel-execution.md)
+- [references/postmortem-checkpoint.md](references/postmortem-checkpoint.md)
 - [references/quality-mode.md](references/quality-mode.md)
 - [references/teardown.md](references/teardown.md)
 

@@ -9,7 +9,13 @@
   "homepage": "https://github.com/AtelierArith/atelier-arith-julia-development-skills",
   "repository": "https://github.com/AtelierArith/atelier-arith-julia-development-skills",
   "license": "MIT",
-  "keywords": ["julia", "codex", "skills", "testing", "package-development"],
+  "keywords": [
+    "julia",
+    "codex",
+    "skills",
+    "testing",
+    "package-development"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Atelier Arith Julia Development Skills",
@@ -17,9 +23,10 @@
     "longDescription": "A collection of Codex skills for installing Julia, generating Julia packages, creating Julia apps, creating test environments, and running Julia tests.",
     "developerName": "Atelier Arith",
     "category": "Developer Tools",
-    "capabilities": ["Write"],
+    "capabilities": [
+      "Write"
+    ],
     "websiteURL": "https://github.com/AtelierArith/atelier-arith-julia-development-skills",
-    "composerIcon": "./assets/icon.svg",
     "defaultPrompt": [
       "Create a Julia package in this directory.",
       "Add a Julia test environment.",

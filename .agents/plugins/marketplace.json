@@ -105,8 +105,7 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Development & Workflow",
-      "description": "Codex skills for Julia installation, package creation, app creation, and test workflows.",
-      "icon": "./plugins/AtelierArith/atelier-arith-julia-development-skills/assets/icon.svg"
+      "description": "Codex skills for Julia installation, package creation, app creation, and test workflows."
     },
     {
       "name": "bringyour-migration-auditor",
@@ -179,7 +178,8 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Development & Workflow",
-      "description": "223 production-ready skills, 23 agents, and 298 Python tools across 9 domains — engineering, marketing, product, compliance, and more."
+      "description": "223 production-ready skills, 23 agents, and 298 Python tools across 9 domains — engineering, marketing, product, compliance, and more.",
+      "icon": "./plugins/alirezarezvani/claude-skills/assets/icon.png"
     },
     {
       "name": "claude-octopus",
@@ -457,7 +457,8 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Development & Workflow",
-      "description": "Three-phase Requirements → Design → Tasks workflow for Claude Code and Codex — EARS notation acceptance criteria, autonomous execution loop, cross-spec dependencies, and post-implementation acceptance testing."
+      "description": "Three-phase Requirements → Design → Tasks workflow for Claude Code and Codex — EARS notation acceptance criteria, autonomous execution loop, cross-spec dependencies, and post-implementation acceptance testing.",
+      "icon": "./plugins/Habib0x0/spec-driven-plugin/assets/spec-driven-icon.svg"
     },
     {
       "name": "stark",
@@ -613,7 +614,8 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Tools & Integrations",
-      "description": "File-based inter-agent messaging with co-op mode, cross-project federation, and orchestrator integrations."
+      "description": "File-based inter-agent messaging with co-op mode, cross-project federation, and orchestrator integrations.",
+      "icon": "./plugins/avivsinai/agent-message-queue/assets/icon.png"
     },
     {
       "name": "agent-vision",
@@ -643,6 +645,21 @@
       },
       "category": "Tools & Integrations",
       "description": "Local Apple Calendar and Reminders tooling for macOS with Codex plugin adapters."
+    },
+    {
+      "name": "armorcodex",
+      "displayName": "ArmorCodex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/armoriq/armorCodex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Tools & Integrations",
+      "description": "Intent-based security for Codex with MCP plan registration, policy gating, CSRG cryptographic proofs, and audit logging on Bash and apply_patch.",
+      "icon": "./plugins/armoriq/armorCodex/assets/armoriq-logo.png"
     },
     {
       "name": "axonflow",
@@ -1106,6 +1123,21 @@
       },
       "category": "Tools & Integrations",
       "description": "Reverse engineer Rust binaries and libraries: triage targets, demangle symbols, recover crate namespaces, and map panic, unwind, async, and FFI paths."
+    },
+    {
+      "name": "separateweb-capture",
+      "displayName": "SeparateWeb Capture",
+      "source": {
+        "source": "local",
+        "path": "./plugins/AUN-PN/SeparateWeb"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Tools & Integrations",
+      "description": "Give Codex eyes on real webpages with full-page screenshots, UI crops, and JSON manifests for frontend visual QA.",
+      "icon": "./plugins/AUN-PN/SeparateWeb/assets/icon.png"
     },
     {
       "name": "sitemd",

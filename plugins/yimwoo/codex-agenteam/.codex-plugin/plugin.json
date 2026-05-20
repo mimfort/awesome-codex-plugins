@@ -29,7 +29,11 @@
     "longDescription": "ATeam provides specialist roles as Codex agents. Talk to @Architect, @Reviewer, @Pm directly, or use @ATeam to run the full pipeline. Configure roles, write policies, and custom team members via .agenteam/config.yaml.",
     "developerName": "Yiming Wu",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Read", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Build my team",
       "Refactor this codebase to be more maintainable",
