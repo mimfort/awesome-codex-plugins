@@ -32,15 +32,18 @@ USER_AGENT = "awesome-codex-plugins-generator"
 RAW_DEFAULT_BRANCH_REF = "HEAD"
 OPTIONAL_PLUGIN_FILES = (
     "README.md",
+    "NOTICE.md",
     "SECURITY.md",
     "LICENSE",
     "LICENSE.md",
     "LICENSE.txt",
+    "pyproject.toml",
     "package.json",
     "pnpm-lock.yaml",
     "package-lock.json",
     "yarn.lock",
     ".codexignore",
+    ".agents/plugins/marketplace.json",
   )
 METADATA_ONLY_MIRROR_REPOS = {
     # EOC's repo-root Codex plugin references a large skills/commands catalog.
@@ -194,7 +197,7 @@ def collect_selected_paths(
         if candidate in all_names:
             selected.add(optional_name)
 
-    for key in ("skills", "mcpServers", "apps", "app", "appConfig", "hooks"):
+    for key in ("skills", "scripts", "mcpServers", "apps", "app", "appConfig", "hooks"):
         value = manifest.get(key)
         if isinstance(value, str):
             add_recursive_selection(selected, all_names, plugin_root, value)
