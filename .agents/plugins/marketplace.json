@@ -1061,6 +1061,21 @@
       "icon": "./plugins/BlockchainHB/launchfast_codex_plugin/assets/icon.png"
     },
     {
+      "name": "mantis",
+      "displayName": "Mantis",
+      "source": {
+        "source": "local",
+        "path": "./plugins/deonmenezes/mantishack"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Tools & Integrations",
+      "description": "Autonomous bug bounty hunter for authorized engagements \u2014 7-phase FSM (RECON \u2192 AUTH \u2192 HUNT \u2192 CHAIN \u2192 VERIFY \u2192 GRADE \u2192 REPORT), parallel hunter sub-agents, cryptographic scope enforcement, and BLAKE3/Ed25519 Merkle event logs.",
+      "icon": "./plugins/deonmenezes/mantishack/assets/icon.svg"
+    },
+    {
       "name": "mobazha",
       "displayName": "Mobazha",
       "source": {
