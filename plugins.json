@@ -2,8 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "awesome-codex-plugins",
   "version": "1.0.0",
-  "last_updated": "2026-05-29",
-  "total": 93,
+  "last_updated": "2026-05-31",
+  "total": 94,
   "categories": [
     "Development & Workflow",
     "Tools & Integrations"
@@ -888,6 +888,16 @@
       "category": "Tools & Integrations",
       "source": "awesome-codex-plugins",
       "install_url": "https://raw.githubusercontent.com/6Delta9/task-scheduler-codex-plugin/HEAD/.codex-plugin/plugin.json"
+    },
+    {
+      "name": "Thermal-Fluid Research Workflow",
+      "url": "https://github.com/hanhuark/mechanical-engineering-research-skill",
+      "owner": "hanhuark",
+      "repo": "mechanical-engineering-research-skill",
+      "description": "Thermal-fluid mechanical engineering research workflow for literature review, technical writing, data analysis, presentations, proposals, coding, and AI/ML tools.",
+      "category": "Tools & Integrations",
+      "source": "awesome-codex-plugins",
+      "install_url": "https://raw.githubusercontent.com/hanhuark/mechanical-engineering-research-skill/HEAD/.codex-plugin/plugin.json"
     },
     {
       "name": "TokRepo Search",

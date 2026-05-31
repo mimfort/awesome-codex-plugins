@@ -1294,6 +1294,21 @@
       "icon": "./plugins/6Delta9/task-scheduler-codex-plugin/assets/icon.png"
     },
     {
+      "name": "thermal-fluid-research-workflow",
+      "displayName": "Thermal-Fluid Research Workflow",
+      "source": {
+        "source": "local",
+        "path": "./plugins/hanhuark/mechanical-engineering-research-skill"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Tools & Integrations",
+      "description": "Thermal-fluid mechanical engineering research workflow for literature review, technical writing, data analysis, presentations, proposals, coding, and AI/ML tools.",
+      "icon": "./plugins/hanhuark/mechanical-engineering-research-skill/assets/icon.svg"
+    },
+    {
       "name": "tokrepo-search",
       "displayName": "TokRepo Search",
       "source": {
