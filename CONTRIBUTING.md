@@ -4,12 +4,72 @@ Thanks for helping grow the Codex plugin ecosystem!
 
 ## Adding a Plugin
 
+> **Important: Read this entire guide before opening a PR. Submissions missing required items will be asked to fix them.**
+
+### Step 1: Set up scanner CI in your plugin repo (required)
+
+Your plugin repo must have the **HOL AI Plugin Scanner** running in CI before you submit. This is not optional. We verify this during review.
+
+Add this file to your plugin repo at `.github/workflows/hol-plugin-scanner.yml`:
+
+```yaml
+name: HOL Plugin Scanner
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: HOL Plugin Scanner
+        uses: hashgraph-online/ai-plugin-scanner-action@v1
+        with:
+          plugin_dir: "."
+          mode: scan
+          min_score: 80
+          fail_on_severity: high
+          format: sarif
+          upload_sarif: true
+```
+
+Wait for the CI to pass on your repo's main branch, then copy the workflow run URL.
+
+### Step 2: Run the scanner locally and check your score
+
+```bash
+pipx install plugin-scanner
+plugin-scanner scan . --format text
+```
+
+You need a score of **80/130** or higher with **no critical or high severity findings**. Save the output to include in your PR description.
+
+### Step 3: Verify your plugin repo has the required files
+
+Your plugin repo must contain:
+- `.codex-plugin/plugin.json` (valid manifest)
+- `SECURITY.md` (vulnerability disclosure policy)
+- `LICENSE` (MIT or Apache-2.0 recommended)
+- `README.md` (clear description)
+- No hardcoded secrets, no dangerous MCP commands
+- SHA-pinned GitHub Actions (if using Actions)
+- Dependency lockfiles (`package-lock.json` or equivalent)
+
+### Step 4: Fork this repo and add your submission
+
 1. **Fork** this repository
-2. **Run the scanner** on your plugin (see [Scanner Requirements](#scanner-requirements) below)
-3. **Add your entry** to the appropriate section in `README.md`
-4. **Add your plugin bundle** under `plugins/<owner>/<repo>/`
-5. **Follow the format** described below
-6. **Submit a PR** with a clear description and your scanner report
+2. **Add your entry** to the appropriate section in `README.md` (alphabetical order)
+3. **Add your plugin bundle** under `plugins/<owner>/<repo>/` (see [Plugin Bundle Requirements](#plugin-bundle-requirements))
+4. **Add your entry** to `plugins.json` and `.agents/plugins/marketplace.json` (maintainers can help with this if you're unsure)
+5. **Submit a PR** with your scanner score in the description and a link to the CI run on your plugin repo
 
 ## Scanner Requirements (Mandatory)
 
@@ -17,9 +77,10 @@ All plugins submitted to this list **must pass the HOL AI Plugin Scanner**.
 
 ### Minimum Requirements
 
-- **Score:** ≥ 80/100
+- **Score:** ≥ 80/130
 - **Severity:** No critical or high findings
-- **Action:** Your repo must have the scanner running in CI (see [Example Workflows](#example-workflows))
+- **CI:** Scanner workflow must be running in your plugin repo's GitHub Actions (see Step 1 above)
+- **PR description:** Must include scanner score or a link to the passing CI run
 
 ### Run the Scanner Locally
 
@@ -249,18 +310,20 @@ Rules:
 
 Before submitting, verify:
 
+**In your plugin repo:**
+- [ ] `.github/workflows/hol-plugin-scanner.yml` exists and CI passes on main
+- [ ] `SECURITY.md` exists in your plugin repo
+- [ ] `LICENSE` exists in your plugin repo
+- [ ] `.codex-plugin/plugin.json` exists and is valid JSON
+- [ ] Plugin Scanner score ≥ 80/130 (paste score or link CI run in PR description)
+
+**In this repo (your PR):**
 - [ ] README.md entry is alphabetically sorted within its category
 - [ ] Plugin bundle exists under `plugins/<owner>/<repo>/`
-- [ ] `.codex-plugin/plugin.json` exists and is valid JSON
 - [ ] `composerIcon` field is set in `plugin.json` interface section
 - [ ] Icon file exists at the path referenced by `composerIcon`
 - [ ] All links in the README entry are valid
 - [ ] No placeholder or TODO values in plugin.json
-- [ ] **Plugin Scanner score ≥ 80** (attach report or link to CI)
-- [ ] **No critical or high severity findings** in scanner report
-- [ ] **Scanner CI is configured** in your plugin's repo (link to workflow file)
-- [ ] `SECURITY.md` exists in your plugin repo
-- [ ] `LICENSE` exists in your plugin repo
 
 ## CI Checks
 
