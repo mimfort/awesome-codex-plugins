@@ -1,9 +1,0 @@
-dist/
-build/
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
-.coverage
-.coverage.*
-.env
-.env.*
