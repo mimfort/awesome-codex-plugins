@@ -48,17 +48,17 @@ Wait for the CI to pass on your repo's main branch, then copy the workflow run U
 The release metadata below is synced automatically from the latest published HOL scanner release.
 
 ```bash
-pipx install --force "plugin-scanner==2.0.866"
+pipx install --force "plugin-scanner==2.0.867"
 plugin-scanner scan . --format text
 ```
 
-Expected reviewed wheel SHA256: `f9be9969bec58a214f6eac2e57f3dcca4721f42e10d1b1e9ebe7405d8ee297cd`
+Expected reviewed wheel SHA256: `ccf728e1731557475572a6922db31083a3bea83488b784b64ad5f93dab099e43`
 
 If you want to verify the exact wheel before install:
 
 ```bash
 rm -rf .hol-plugin-scanner-dist
-python3 -m pip download --only-binary=:all: --no-deps --dest .hol-plugin-scanner-dist "plugin-scanner==2.0.866"
+python3 -m pip download --only-binary=:all: --no-deps --dest .hol-plugin-scanner-dist "plugin-scanner==2.0.867"
 python3 -m pip hash .hol-plugin-scanner-dist/*.whl
 ```
 
@@ -100,7 +100,7 @@ The commands below stay pinned to the same reviewed scanner release used in the 
 
 ```bash
 # Install the current reviewed release
-pipx install --force "plugin-scanner==2.0.866"
+pipx install --force "plugin-scanner==2.0.867"
 
 # Scan your plugin
 plugin-scanner scan . --format text
@@ -112,7 +112,7 @@ plugin-scanner lint . --format text
 plugin-scanner verify . --format text
 ```
 
-Expected reviewed wheel SHA256: `f9be9969bec58a214f6eac2e57f3dcca4721f42e10d1b1e9ebe7405d8ee297cd`
+Expected reviewed wheel SHA256: `ccf728e1731557475572a6922db31083a3bea83488b784b64ad5f93dab099e43`
 
 ### Required in Your Plugin Repo
 
