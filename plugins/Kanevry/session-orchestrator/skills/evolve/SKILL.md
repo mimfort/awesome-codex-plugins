@@ -264,14 +264,16 @@ For confirmed learnings, use atomic rewrite strategy:
 
    b. Resolve the vault directory: use `$CONFIG."vault-integration"."vault-dir"` if non-null, otherwise fall back to the `$VAULT_DIR` environment variable. If neither is set, emit a warning and skip.
 
-   c. Invoke the mirror script. Derive a synthetic `EVOLVE_SESSION_ID` so the vault-mirror auto-commit phase (#31) produces a traceable commit subject (`chore(vault): mirror evolve-<date> — N learnings + 0 sessions`):
+   c. Invoke the mirror script. Derive a synthetic `EVOLVE_SESSION_ID` so the vault-mirror auto-commit phase (#31) produces a traceable commit subject (`chore(vault): mirror evolve-<date> — N learnings + 0 sessions`). Pass `--vault-name` when `vault-integration.vault-name` is set in Session Config:
       ```bash
       EVOLVE_SESSION_ID="evolve-$(date -u +%Y-%m-%d-%H%M)"
+      EVOLVE_VAULT_NAME=$(echo "$CONFIG" | jq -r '."vault-integration"."vault-name" // empty')
       node "$PLUGIN_ROOT/scripts/vault-mirror.mjs" \
         --vault-dir "<vault-dir>" \
         --source .orchestrator/metrics/learnings.jsonl \
         --kind learning \
-        --session-id "$EVOLVE_SESSION_ID"
+        --session-id "$EVOLVE_SESSION_ID" \
+        ${EVOLVE_VAULT_NAME:+--vault-name "$EVOLVE_VAULT_NAME"}
       ```
 
    d. Handle the exit code according to `mode`:
@@ -319,19 +321,33 @@ Interactive management of existing learnings.
 
 ### Step 4.2: Display Learnings
 
-Present a formatted table grouped by type:
+Present a formatted table grouped by type. Include the **Effective** column — the
+recency-decayed surfacing score (#670) — so stale high-confidence entries are visible
+as decay candidates next to their static confidence:
 
 ```
 ## Active Learnings
 
-| # | Type | Subject | Confidence | Expires | Insight |
-|---|------|---------|------------|---------|---------|
-| 1 | fragile-file | src/lib/auth.ts | 0.80 | 2026-07-05 | Changed in 4 of last 5 sessions |
-| 2 | effective-sizing | feature-session-sizing | 0.65 | 2026-06-20 | Feature sessions work well with 3 agents/wave |
-| ... | ... | ... | ... | ... | ... |
+| # | Type | Subject | Confidence | Effective | Expires | Insight |
+|---|------|---------|------------|-----------|---------|---------|
+| 1 | fragile-file | src/lib/auth.ts | 0.80 | 0.78 | 2026-07-05 | Changed in 4 of last 5 sessions |
+| 2 | effective-sizing | feature-session-sizing | 0.65 | 0.61 | 2026-06-20 | Feature sessions work well with 3 agents/wave |
+| ... | ... | ... | ... | ... | ... | ... |
 
 Summary: N active learnings (M high confidence, K expiring soon)
 ```
+
+> **Effective (decayed) score — #670.** Retrieval/surfacing ranks by an
+> `effectiveScore = max(confidence × 0.5^(ageDays / halfLifeDays), confidence × floorFactor)`
+> blend, NOT raw confidence. `ageDays` derives from `last_reinforced` / `last_accessed` /
+> `updated_at` when present, else `created_at`. So a stale high-confidence learning ranks
+> below a fresh mid-confidence one, while the `floorFactor` (default 0.1) guarantees a
+> durable learning never collapses to ~0. Tuned under the existing `evolve:` Session Config
+> block (`decay-enabled: true`, `decay-half-life-days: 90`, `decay-floor-factor: 0.1` — all
+> conservative defaults; set `decay-enabled: false` to restore pure-confidence ordering).
+> Implemented in `scripts/lib/learnings/surface.mjs` (`effectiveScore` + `surfaceTopN`).
+> The confidence FILTER (`> 0.3`) is unchanged — decay re-ranks survivors, it does not
+> change eligibility.
 
 ### Step 4.3: Interactive Management
 

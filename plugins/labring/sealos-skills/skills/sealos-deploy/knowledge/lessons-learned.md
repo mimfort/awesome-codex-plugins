@@ -40,6 +40,10 @@ This document captures patterns and solutions from actual Sealos deployment expe
 
 ## Consolidated Patterns
 
+### KubeBlocks Redis Readiness Lag
+
+Redis Sentinel can report readiness before the primary Redis component and the default account Secret appear. Treat final Cluster Ready/Running state, `${APP_NAME}-redis-redis-account-default`, `${APP_NAME}-redis-redis-redis.${NAMESPACE}.svc.cluster.local`, and successful application registration/login as the acceptance signal.
+
 ### GHCR Push Succeeds but Cluster Pull Fails (Prevents `ImagePullBackOff`)
 
 ```yaml
@@ -157,4 +161,57 @@ generalized_pattern:
   - "The Sealos App URL must be the URL that succeeds from a fresh browser session"
   - "Path-based safe entrances need root-path smoke tests because launchers may normalize or revisit root"
   - "Post-rollout log scans are part of acceptance for login-gated web apps"
+```
+
+### ERPNext / Frappe Admin Username (Prevents Login Smoke Mismatch)
+
+```yaml
+detection:
+  symptoms:
+    - "Template exposes admin username/password inputs"
+    - "Login succeeds with Administrator but fails with the configured username"
+    - "bench new-site completed and the ready marker exists"
+  root_cause: "bench new-site --admin-password sets the built-in Administrator password; it does not rename the login identity"
+
+template_contract:
+  administrator_inputs:
+    - "Declare admin_username and admin_password in spec.inputs when deployers must choose credentials"
+    - "Pass application admin credentials as direct env values to the Frappe init path"
+    - "Keep database credentials on KubeBlocks secrets"
+  reserved_names:
+    - "Administrator"
+    - "Guest"
+  recommended_default_username: "admin"
+
+init_sequence:
+  - "Run bench new-site with the deploy-time admin password"
+  - "Set User.username for the built-in Administrator user to the deploy-time admin username"
+  - "Enable allow_login_using_user_name"
+  - "Clear Frappe cache"
+  - "Write the ready marker after username/login settings, migrations, and app installs finish"
+
+runtime_truth:
+  - "Login smoke uses the exact admin username/password collected during deploy"
+  - "Password values are masked in logs, summaries, and final output"
+```
+
+### Multi-Component Runtime Bundle Drift (Prevents Post-Login Route Mismatch)
+
+```yaml
+detection:
+  trigger:
+    - "Login or registration succeeds, then the browser lands on a 404/route mismatch page"
+    - "Browser network logs show API route 404/5xx after authentication"
+
+  root_causes:
+    - "Console/frontend image comes from a different official release than the API image"
+    - "An official frontend/console service was omitted from the deployed topology"
+    - "Ingress or gateway routes do not cover the official public entry paths"
+    - "Public URL or endpoint env/config no longer matches the exposed route"
+
+fixes:
+  preferred:
+    - "Lock API, console/frontend, workers, realtime, and gateway components to one official compose/release source"
+    - "Expose each official public entry path through the matching Service and Ingress rule"
+    - "Verify login with final URL, page title, visible authenticated content, network 4xx/5xx list, and backend route logs"
 ```

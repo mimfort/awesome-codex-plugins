@@ -85,6 +85,32 @@ class CheckConsistencyTests(unittest.TestCase):
                 additional_include_paths=additional_include_paths,
             )
 
+    def run_artifact_checker(self, artifact_text: str, evidence_text: str = ""):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            skill = root / "SKILL.md"
+            refs_dir = root / "references"
+            refs_file = refs_dir / "sample.md"
+            rules_file = refs_dir / "rules-registry.yaml"
+            artifact_file = root / "template" / "demo" / "index.yaml"
+            include_paths = ["template/demo/index.yaml"]
+
+            write_file(skill, "# no yaml snippets\n")
+            write_file(refs_file, "# refs\n")
+            write_registry(rules_file)
+            write_file(artifact_file, artifact_text)
+            if evidence_text:
+                evidence_file = root / ".sealos" / "runtime-bundle-evidence.yaml"
+                write_file(evidence_file, evidence_text)
+                include_paths.append(".sealos/runtime-bundle-evidence.yaml")
+
+            return CHECKER.run_checks(
+                skill,
+                refs_dir,
+                rules_file,
+                additional_include_paths=include_paths,
+            )
+
     def test_detects_app_spec_template_with_long_gap(self):
         long_gap = "x" * 1200
         violations = self.run_checker(
@@ -768,6 +794,533 @@ class CheckConsistencyTests(unittest.TestCase):
             """
         )
         self.assertTrue(any(item.rule_id == "R024" for item in violations))
+
+    def test_detects_runtime_bundle_image_version_mismatch(self):
+        violations = self.run_artifact_checker(
+            """
+            apiVersion: app.sealos.io/v1
+            kind: Template
+            metadata:
+              name: demo
+            spec:
+              title: Demo
+              url: https://example.com
+              gitRepo: https://github.com/example/demo
+              author: example
+              description: demo
+              icon: https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/demo/logo.png
+              templateType: inline
+              locale: en
+              i18n:
+                zh:
+                  description: 演示应用模板
+              categories:
+                - tool
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: demo-api
+              labels:
+                app: demo-api
+                cloud.sealos.io/app-deploy-manager: demo-api
+              annotations:
+                originImageName: ghcr.io/example/bundle-api:1.0.0
+            spec:
+              revisionHistoryLimit: 1
+              template:
+                spec:
+                  automountServiceAccountToken: false
+                  imagePullSecrets:
+                    - name: ${{ defaults.app_name }}
+                  containers:
+                    - name: demo-api
+                      image: ghcr.io/example/bundle-api:1.0.0
+                      imagePullPolicy: IfNotPresent
+                      env:
+                        - name: PUBLIC_ENDPOINT
+                          value: https://example.com
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: demo-console
+              labels:
+                app: demo-console
+                cloud.sealos.io/app-deploy-manager: demo-console
+              annotations:
+                originImageName: ghcr.io/example/bundle-console:2.0.0
+            spec:
+              revisionHistoryLimit: 1
+              template:
+                spec:
+                  automountServiceAccountToken: false
+                  imagePullSecrets:
+                    - name: ${{ defaults.app_name }}
+                  containers:
+                    - name: demo-console
+                      image: ghcr.io/example/bundle-console:2.0.0
+                      imagePullPolicy: IfNotPresent
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: demo-api
+              labels:
+                app: demo-api
+                cloud.sealos.io/app-deploy-manager: demo-api
+            spec:
+              selector:
+                app: demo-api
+              ports:
+                - name: http
+                  port: 3000
+                  targetPort: 3000
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: demo-console
+              labels:
+                app: demo-console
+                cloud.sealos.io/app-deploy-manager: demo-console
+            spec:
+              selector:
+                app: demo-console
+              ports:
+                - name: http
+                  port: 80
+                  targetPort: 80
+            ---
+            apiVersion: networking.k8s.io/v1
+            kind: Ingress
+            metadata:
+              name: demo-api
+            spec:
+              rules:
+                - http:
+                    paths:
+                      - path: /
+                        pathType: Prefix
+                        backend:
+                          service:
+                            name: demo-api
+                            port:
+                              number: 3000
+                      - path: /console
+                        pathType: Prefix
+                        backend:
+                          service:
+                            name: demo-console
+                            port:
+                              number: 80
+            """
+            ,
+            """
+            apiVersion: docker-to-sealos/v1
+            kind: RuntimeBundleEvidence
+            metadata:
+              name: demo-runtime-bundle
+            spec:
+              appName: demo
+              source: https://example.com/releases/v1/docker-compose.yml
+              images:
+                - ghcr.io/example/bundle-api:1.0.0
+                - ghcr.io/example/bundle-console:1.0.0
+              components:
+                - demo-api
+                - demo-console
+              routes:
+                - path: /
+                  service: demo-api
+                - path: /console
+                  service: demo-console
+              env:
+                - PUBLIC_ENDPOINT
+            """
+        )
+        self.assertTrue(any(item.rule_id == "R046" for item in violations))
+
+    def test_detects_missing_runtime_bundle_console_component_and_route(self):
+        violations = self.run_artifact_checker(
+            """
+            apiVersion: app.sealos.io/v1
+            kind: Template
+            metadata:
+              name: demo
+            spec:
+              title: Demo
+              url: https://example.com
+              gitRepo: https://github.com/example/demo
+              author: example
+              description: demo
+              icon: https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/demo/logo.png
+              templateType: inline
+              locale: en
+              i18n:
+                zh:
+                  description: 演示应用模板
+              categories:
+                - tool
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: demo-api
+              labels:
+                app: demo-api
+                cloud.sealos.io/app-deploy-manager: demo-api
+              annotations:
+                originImageName: ghcr.io/example/bundle-api:1.0.0
+            spec:
+              revisionHistoryLimit: 1
+              template:
+                spec:
+                  automountServiceAccountToken: false
+                  imagePullSecrets:
+                    - name: ${{ defaults.app_name }}
+                  containers:
+                    - name: demo-api
+                      image: ghcr.io/example/bundle-api:1.0.0
+                      imagePullPolicy: IfNotPresent
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: demo-api
+              labels:
+                app: demo-api
+                cloud.sealos.io/app-deploy-manager: demo-api
+            spec:
+              selector:
+                app: demo-api
+              ports:
+                - name: http
+                  port: 3000
+                  targetPort: 3000
+            ---
+            apiVersion: networking.k8s.io/v1
+            kind: Ingress
+            metadata:
+              name: demo-api
+            spec:
+              rules:
+                - http:
+                    paths:
+                      - path: /
+                        pathType: Prefix
+                        backend:
+                          service:
+                            name: demo-api
+                            port:
+                              number: 3000
+            """
+            ,
+            """
+            apiVersion: docker-to-sealos/v1
+            kind: RuntimeBundleEvidence
+            metadata:
+              name: demo-runtime-bundle
+            spec:
+              appName: demo
+              source: https://example.com/releases/v1/docker-compose.yml
+              images:
+                - ghcr.io/example/bundle-api:1.0.0
+                - ghcr.io/example/bundle-console:1.0.0
+              components:
+                - demo-api
+                - demo-console
+              routes:
+                - path: /
+                  service: demo-api
+                - path: /console
+                  service: demo-console
+            """
+        )
+        self.assertTrue(any(item.rule_id == "R046" for item in violations))
+
+    def test_allows_runtime_bundle_with_matching_images_components_routes_and_envs(self):
+        violations = self.run_artifact_checker(
+            """
+            apiVersion: app.sealos.io/v1
+            kind: Template
+            metadata:
+              name: demo
+            spec:
+              title: Demo
+              url: https://example.com
+              gitRepo: https://github.com/example/demo
+              author: example
+              description: demo
+              icon: https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/demo/logo.png
+              templateType: inline
+              locale: en
+              i18n:
+                zh:
+                  description: 演示应用模板
+              categories:
+                - tool
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: demo-api
+              labels:
+                app: demo-api
+                cloud.sealos.io/app-deploy-manager: demo-api
+              annotations:
+                originImageName: ghcr.io/example/bundle-api:1.0.0
+            spec:
+              revisionHistoryLimit: 1
+              template:
+                spec:
+                  automountServiceAccountToken: false
+                  imagePullSecrets:
+                    - name: ${{ defaults.app_name }}
+                  containers:
+                    - name: demo-api
+                      image: ghcr.io/example/bundle-api:1.0.0
+                      imagePullPolicy: IfNotPresent
+                      env:
+                        - name: PUBLIC_ENDPOINT
+                          value: https://example.com
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: demo-console
+              labels:
+                app: demo-console
+                cloud.sealos.io/app-deploy-manager: demo-console
+              annotations:
+                originImageName: ghcr.io/example/bundle-console:1.0.0
+            spec:
+              revisionHistoryLimit: 1
+              template:
+                spec:
+                  automountServiceAccountToken: false
+                  imagePullSecrets:
+                    - name: ${{ defaults.app_name }}
+                  containers:
+                    - name: demo-console
+                      image: ghcr.io/example/bundle-console:1.0.0
+                      imagePullPolicy: IfNotPresent
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: demo-api
+              labels:
+                app: demo-api
+                cloud.sealos.io/app-deploy-manager: demo-api
+            spec:
+              selector:
+                app: demo-api
+              ports:
+                - name: http
+                  port: 3000
+                  targetPort: 3000
+            ---
+            apiVersion: v1
+            kind: Service
+            metadata:
+              name: demo-console
+              labels:
+                app: demo-console
+                cloud.sealos.io/app-deploy-manager: demo-console
+            spec:
+              selector:
+                app: demo-console
+              ports:
+                - name: http
+                  port: 80
+                  targetPort: 80
+            ---
+            apiVersion: networking.k8s.io/v1
+            kind: Ingress
+            metadata:
+              name: demo-api
+            spec:
+              rules:
+                - http:
+                    paths:
+                      - path: /
+                        pathType: Prefix
+                        backend:
+                          service:
+                            name: demo-api
+                            port:
+                              number: 3000
+                      - path: /console
+                        pathType: Prefix
+                        backend:
+                          service:
+                            name: demo-console
+                            port:
+                              number: 80
+            """
+            ,
+            """
+            apiVersion: docker-to-sealos/v1
+            kind: RuntimeBundleEvidence
+            metadata:
+              name: demo-runtime-bundle
+            spec:
+              appName: demo
+              source: https://example.com/releases/v1/docker-compose.yml
+              images:
+                - ghcr.io/example/bundle-api:1.0.0
+                - ghcr.io/example/bundle-console:1.0.0
+              components:
+                - demo-api
+                - demo-console
+              routes:
+                - path: /
+                  service: demo-api
+                - path: /console
+                  service: demo-console
+              env:
+                - PUBLIC_ENDPOINT
+            """
+        )
+        self.assertFalse(any(item.rule_id == "R046" for item in violations))
+
+    def test_allows_single_component_artifact_without_runtime_bundle_metadata(self):
+        violations = self.run_artifact_checker(
+            """
+            apiVersion: app.sealos.io/v1
+            kind: Template
+            metadata:
+              name: demo
+            spec:
+              title: Demo
+              url: https://example.com
+              gitRepo: https://github.com/example/demo
+              author: example
+              description: demo
+              icon: https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/demo/logo.png
+              templateType: inline
+              locale: en
+              i18n:
+                zh:
+                  description: 演示应用模板
+              categories:
+                - tool
+            ---
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: demo
+              labels:
+                app: demo
+                cloud.sealos.io/app-deploy-manager: demo
+              annotations:
+                originImageName: ghcr.io/example/demo:1.0.0
+            spec:
+              revisionHistoryLimit: 1
+              template:
+                spec:
+                  automountServiceAccountToken: false
+                  imagePullSecrets:
+                    - name: ${{ defaults.app_name }}
+                  containers:
+                    - name: demo
+                      image: ghcr.io/example/demo:1.0.0
+                      imagePullPolicy: IfNotPresent
+            """
+        )
+        self.assertFalse(any(item.rule_id == "R046" for item in violations))
+
+    def test_runtime_bundle_check_is_scoped_to_same_artifact_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            skill = root / "SKILL.md"
+            refs_dir = root / "references"
+            refs_file = refs_dir / "sample.md"
+            rules_file = refs_dir / "rules-registry.yaml"
+            demo_artifact = root / "template" / "demo" / "index.yaml"
+            other_artifact = root / "template" / "other" / "index.yaml"
+            evidence_file = root / ".sealos" / "runtime-bundle-evidence.yaml"
+
+            write_file(skill, "# no yaml snippets\n")
+            write_file(refs_file, "# refs\n")
+            write_registry(rules_file)
+            write_file(
+                demo_artifact,
+                """
+                apiVersion: app.sealos.io/v1
+                kind: Template
+                metadata:
+                  name: demo
+                spec:
+                  title: Demo
+                  url: https://example.com
+                  gitRepo: https://github.com/example/demo
+                  author: example
+                  description: demo
+                  icon: https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/demo/logo.png
+                  templateType: inline
+                  locale: en
+                  i18n:
+                    zh:
+                      description: 演示应用模板
+                  categories:
+                    - tool
+                """,
+            )
+            write_file(
+                other_artifact,
+                """
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: demo-api
+                  labels:
+                    app: demo-api
+                    cloud.sealos.io/app-deploy-manager: demo-api
+                  annotations:
+                    originImageName: ghcr.io/example/bundle-api:1.0.0
+                spec:
+                  revisionHistoryLimit: 1
+                  template:
+                    spec:
+                      automountServiceAccountToken: false
+                      imagePullSecrets:
+                        - name: ${{ defaults.app_name }}
+                      containers:
+                        - name: demo-api
+                          image: ghcr.io/example/bundle-api:1.0.0
+                          imagePullPolicy: IfNotPresent
+                """,
+            )
+            write_file(
+                evidence_file,
+                """
+                apiVersion: docker-to-sealos/v1
+                kind: RuntimeBundleEvidence
+                metadata:
+                  name: demo-runtime-bundle
+                spec:
+                  appName: demo
+                  source: https://example.com/releases/v1/docker-compose.yml
+                  images:
+                    - ghcr.io/example/bundle-api:1.0.0
+                  components:
+                    - demo-api
+                """,
+            )
+
+            violations = CHECKER.run_checks(
+                skill,
+                refs_dir,
+                rules_file,
+                additional_include_paths=[
+                    "template/demo/index.yaml",
+                    "template/other/index.yaml",
+                    ".sealos/runtime-bundle-evidence.yaml",
+                ],
+            )
+            self.assertTrue(any(item.rule_id == "R046" for item in violations))
 
     def test_detects_origin_image_name_mismatch_in_artifact(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3301,6 +3854,255 @@ __MOUNTS__
         )
         self.assertFalse(any(item.rule_id == "R041" for item in violations))
 
+    def test_allows_declared_template_input_references(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            skill = root / "SKILL.md"
+            refs_dir = root / "references"
+            refs_file = refs_dir / "sample.md"
+            rules_file = refs_dir / "rules-registry.yaml"
+            artifact_file = root / "template" / "erpnext" / "index.yaml"
+
+            write_file(skill, "# no yaml snippets\n")
+            write_file(refs_file, "# refs\n")
+            write_registry(rules_file)
+            write_file(
+                artifact_file,
+                """
+                apiVersion: app.sealos.io/v1
+                kind: Template
+                metadata:
+                  name: erpnext
+                spec:
+                  title: ERPNext
+                  url: https://erpnext.com
+                  gitRepo: https://github.com/frappe/erpnext
+                  author: Sealos
+                  description: ERPNext template
+                  icon: https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/erpnext/logo.png
+                  templateType: inline
+                  locale: en
+                  i18n:
+                    zh:
+                      description: ERPNext 模板
+                  categories:
+                    - tool
+                  inputs:
+                    admin_username:
+                      description: Administrator login name
+                      type: string
+                      default: admin
+                      required: true
+                    admin_password:
+                      description: Administrator password
+                      type: string
+                      default: ''
+                      required: true
+                ---
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: erpnext
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: erpnext
+                          env:
+                            - name: ADMIN_USERNAME
+                              value: ${{ inputs.admin_username }}
+                            - name: ADMIN_PASSWORD
+                              value: ${{ inputs.admin_password }}
+                """,
+            )
+
+            violations = CHECKER.run_checks(
+                skill,
+                refs_dir,
+                rules_file,
+                additional_include_paths=["template/erpnext/index.yaml"],
+            )
+            self.assertFalse(any(item.rule_id == "R045" for item in violations))
+
+    def test_detects_undeclared_template_input_reference(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            skill = root / "SKILL.md"
+            refs_dir = root / "references"
+            refs_file = refs_dir / "sample.md"
+            rules_file = refs_dir / "rules-registry.yaml"
+            artifact_file = root / "template" / "erpnext" / "index.yaml"
+
+            write_file(skill, "# no yaml snippets\n")
+            write_file(refs_file, "# refs\n")
+            write_registry(rules_file)
+            write_file(
+                artifact_file,
+                """
+                apiVersion: app.sealos.io/v1
+                kind: Template
+                metadata:
+                  name: erpnext
+                spec:
+                  title: ERPNext
+                  url: https://erpnext.com
+                  gitRepo: https://github.com/frappe/erpnext
+                  author: Sealos
+                  description: ERPNext template
+                  icon: https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/erpnext/logo.png
+                  templateType: inline
+                  locale: en
+                  i18n:
+                    zh:
+                      description: ERPNext 模板
+                  categories:
+                    - tool
+                  inputs:
+                    admin_password:
+                      description: Administrator password
+                      type: string
+                      default: ''
+                      required: true
+                ---
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: erpnext
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: erpnext
+                          env:
+                            - name: ADMIN_USERNAME
+                              value: ${{ inputs.admin_username }}
+                """,
+            )
+
+            violations = CHECKER.run_checks(
+                skill,
+                refs_dir,
+                rules_file,
+                additional_include_paths=["template/erpnext/index.yaml"],
+            )
+            r045 = [item for item in violations if item.rule_id == "R045"]
+            self.assertTrue(r045)
+            self.assertTrue(any("inputs.admin_username" in item.message for item in r045))
+
+    def test_template_input_reference_rule_ignores_defaults_refs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            skill = root / "SKILL.md"
+            refs_dir = root / "references"
+            refs_file = refs_dir / "sample.md"
+            rules_file = refs_dir / "rules-registry.yaml"
+            artifact_file = root / "template" / "erpnext" / "index.yaml"
+
+            write_file(skill, "# no yaml snippets\n")
+            write_file(refs_file, "# refs\n")
+            write_registry(rules_file)
+            write_file(
+                artifact_file,
+                """
+                apiVersion: app.sealos.io/v1
+                kind: Template
+                metadata:
+                  name: erpnext
+                spec:
+                  title: ERPNext
+                  url: https://erpnext.com
+                  gitRepo: https://github.com/frappe/erpnext
+                  author: Sealos
+                  description: ERPNext template
+                  icon: https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/erpnext/logo.png
+                  templateType: inline
+                  locale: en
+                  i18n:
+                    zh:
+                      description: ERPNext 模板
+                  categories:
+                    - tool
+                ---
+                apiVersion: v1
+                kind: Service
+                metadata:
+                  name: ${{ defaults.app_name }}
+                spec:
+                  selector:
+                    app: ${{ defaults.app_name }}
+                """,
+            )
+
+            violations = CHECKER.run_checks(
+                skill,
+                refs_dir,
+                rules_file,
+                additional_include_paths=["template/erpnext/index.yaml"],
+            )
+            self.assertFalse(any(item.rule_id == "R045" for item in violations))
+
+    def test_detects_undeclared_template_input_reference_in_condition(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            skill = root / "SKILL.md"
+            refs_dir = root / "references"
+            refs_file = refs_dir / "sample.md"
+            rules_file = refs_dir / "rules-registry.yaml"
+            artifact_file = root / "template" / "erpnext" / "index.yaml"
+
+            write_file(skill, "# no yaml snippets\n")
+            write_file(refs_file, "# refs\n")
+            write_registry(rules_file)
+            write_file(
+                artifact_file,
+                """
+                apiVersion: app.sealos.io/v1
+                kind: Template
+                metadata:
+                  name: erpnext
+                spec:
+                  title: ERPNext
+                  url: https://erpnext.com
+                  gitRepo: https://github.com/frappe/erpnext
+                  author: Sealos
+                  description: ERPNext template
+                  icon: https://raw.githubusercontent.com/labring-actions/templates/kb-0.9/template/erpnext/logo.png
+                  templateType: inline
+                  locale: en
+                  i18n:
+                    zh:
+                      description: ERPNext 模板
+                  categories:
+                    - tool
+                  inputs:
+                    admin_password:
+                      description: Administrator password
+                      type: string
+                      default: ''
+                      required: true
+                ---
+                ${{ if(inputs.enable_signup === 'true') }}
+                apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: erpnext-signup
+                data:
+                  enabled: "true"
+                ---
+                ${{ endif() }}
+                """,
+            )
+
+            violations = CHECKER.run_checks(
+                skill,
+                refs_dir,
+                rules_file,
+                additional_include_paths=["template/erpnext/index.yaml"],
+            )
+            r045 = [item for item in violations if item.rule_id == "R045"]
+            self.assertTrue(r045)
+            self.assertTrue(any("inputs.enable_signup" in item.message for item in r045))
+
     def test_registry_rule_scope_filters_violations(self):
         rules_yaml = render_registry(
             overrides={
@@ -3628,6 +4430,93 @@ __MOUNTS__
             )
             self.assertTrue(any(item.rule_id == "R039" for item in violations))
 
+    def test_detects_raw_database_resources_across_supported_kinds(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            skill = root / "SKILL.md"
+            refs_dir = root / "references"
+            refs_file = refs_dir / "sample.md"
+            rules_file = refs_dir / "rules-registry.yaml"
+            artifact_file = root / "template" / "demo" / "index.yaml"
+
+            write_file(skill, "# no yaml snippets\n")
+            write_file(refs_file, "# refs\n")
+            write_registry(rules_file)
+            write_file(
+                artifact_file,
+                """
+                apiVersion: apps/v1
+                kind: StatefulSet
+                metadata:
+                  name: redis
+                  labels:
+                    app: redis
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: redis
+                          image: redis:7.2.7
+                          imagePullPolicy: IfNotPresent
+                ---
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: postgres
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: postgres
+                          image: postgres:16.4
+                          imagePullPolicy: IfNotPresent
+                ---
+                apiVersion: apps/v1
+                kind: DaemonSet
+                metadata:
+                  name: mysql
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: mysql
+                          image: mysql:8.0.35
+                          imagePullPolicy: IfNotPresent
+                ---
+                apiVersion: batch/v1
+                kind: Job
+                metadata:
+                  name: kafka
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: kafka
+                          image: bitnami/kafka:3.3.2
+                          imagePullPolicy: IfNotPresent
+                ---
+                apiVersion: v1
+                kind: Service
+                metadata:
+                  name: mongo
+                spec:
+                  selector:
+                    app: mongo
+                  ports:
+                    - name: tcp-27017
+                      port: 27017
+                      targetPort: 27017
+                """,
+            )
+
+            violations = CHECKER.run_checks(
+                skill,
+                refs_dir,
+                rules_file,
+                additional_include_paths=["template/demo/index.yaml"],
+            )
+            self.assertGreaterEqual(len([item for item in violations if item.rule_id == "R039"]), 5)
+
     def test_allows_stateful_application_workload_in_artifact(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -3713,6 +4602,127 @@ __MOUNTS__
                         resources:
                           requests:
                             storage: 1Gi
+                """,
+            )
+
+            violations = CHECKER.run_checks(
+                skill,
+                refs_dir,
+                rules_file,
+                additional_include_paths=["template/demo/index.yaml"],
+            )
+            self.assertFalse(any(item.rule_id == "R039" for item in violations))
+
+    def test_allows_kubeblocks_redis_cluster_and_app_statefulset_dependency(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            skill = root / "SKILL.md"
+            refs_dir = root / "references"
+            refs_file = refs_dir / "sample.md"
+            rules_file = refs_dir / "rules-registry.yaml"
+            artifact_file = root / "template" / "demo" / "index.yaml"
+
+            write_file(skill, "# no yaml snippets\n")
+            write_file(refs_file, "# refs\n")
+            write_registry(rules_file)
+            write_file(
+                artifact_file,
+                """
+                apiVersion: apps.kubeblocks.io/v1alpha1
+                kind: Cluster
+                metadata:
+                  name: demo-redis
+                  labels:
+                    kb.io/database: redis-7.2.7
+                    sealos-db-provider-cr: demo-redis
+                    clusterdefinition.kubeblocks.io/name: redis
+                spec:
+                  componentSpecs:
+                    - name: redis
+                      resources:
+                        requests:
+                          cpu: 50m
+                          memory: 51Mi
+                        limits:
+                          cpu: 500m
+                          memory: 512Mi
+                    - name: redis-sentinel
+                      resources:
+                        requests:
+                          cpu: 50m
+                          memory: 51Mi
+                        limits:
+                          cpu: 500m
+                          memory: 512Mi
+                ---
+                apiVersion: apps/v1
+                kind: StatefulSet
+                metadata:
+                  name: demo-data
+                  labels:
+                    app: demo-data
+                    cloud.sealos.io/app-deploy-manager: demo-data
+                spec:
+                  revisionHistoryLimit: 1
+                  template:
+                    spec:
+                      automountServiceAccountToken: false
+                      containers:
+                        - name: demo
+                          image: ghcr.io/example/demo:1.0.0
+                          imagePullPolicy: IfNotPresent
+                          env:
+                            - name: REDIS_HOST
+                              value: demo-redis-redis-redis.default.svc.cluster.local
+                            - name: REDIS_PASSWORD
+                              valueFrom:
+                                secretKeyRef:
+                                  name: demo-redis-redis-account-default
+                                  key: password
+                  volumeClaimTemplates:
+                    - metadata:
+                        name: data
+                      spec:
+                        resources:
+                          requests:
+                            storage: 1Gi
+                """,
+            )
+
+            violations = CHECKER.run_checks(
+                skill,
+                refs_dir,
+                rules_file,
+                additional_include_paths=["template/demo/index.yaml"],
+            )
+            self.assertFalse(any(item.rule_id == "R039" for item in violations))
+
+    def test_allows_database_client_init_jobs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            skill = root / "SKILL.md"
+            refs_dir = root / "references"
+            refs_file = refs_dir / "sample.md"
+            rules_file = refs_dir / "rules-registry.yaml"
+            artifact_file = root / "template" / "demo" / "index.yaml"
+
+            write_file(skill, "# no yaml snippets\n")
+            write_file(refs_file, "# refs\n")
+            write_registry(rules_file)
+            write_file(
+                artifact_file,
+                """
+                apiVersion: batch/v1
+                kind: Job
+                metadata:
+                  name: demo-pg-init
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: pg-init
+                          image: postgres:16-alpine
+                          imagePullPolicy: IfNotPresent
                 """,
             )
 

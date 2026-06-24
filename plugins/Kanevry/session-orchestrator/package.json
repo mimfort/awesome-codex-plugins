@@ -1,6 +1,6 @@
 {
   "name": "session-orchestrator",
-  "version": "3.9.0",
+  "version": "3.10.0",
   "description": "Session Orchestrator — Claude Code plugin for structured development sessions",
   "type": "module",
   "keywords": [
@@ -42,6 +42,9 @@
     "lint-staged": "^15.2.10",
     "prettier": "^3.0.0",
     "vitest": "^4.1.5"
+  },
+  "overrides": {
+    "vite": "^8.0.16"
   },
   "license": "MIT",
   "repository": {

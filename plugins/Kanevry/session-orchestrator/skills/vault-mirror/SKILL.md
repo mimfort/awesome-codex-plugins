@@ -53,7 +53,7 @@ One JSON line is written to stdout for each non-empty JSONL entry processed. Exi
 ### Output line shape
 
 ```json
-{"action":"created","path":"50-sessions/session-2026-04-13.md","kind":"session","id":"session-2026-04-13"}
+{"action":"created","path":"50-sessions/session-orchestrator/session-2026-04-13.md","kind":"session","id":"session-2026-04-13"}
 ```
 
 `path` is relative to `--vault-dir`.
@@ -70,14 +70,16 @@ One JSON line is written to stdout for each non-empty JSONL entry processed. Exi
 
 | Kind | Target |
 |---|---|
-| `session` | `<vault-dir>/50-sessions/<session-id>.md` |
-| `learning` | `<vault-dir>/40-learnings/<slug>.md` |
+| `session` | `<vault-dir>/50-sessions/<repo>/<session-id>.md` |
+| `learning` | `<vault-dir>/40-learnings/<repo>/<slug>.md` |
 
 Subdirectories are created automatically with `mkdirSync({ recursive: true })` when writing (not in `--dry-run` mode).
 
 The numeric prefix (`50-sessions/`, `40-learnings/`) follows the vault folder ordering convention so that sessions and learnings appear in the correct position in the vault tree relative to other note types.
 
-**Path contract note:** Issue #187 proposed `<vault>/05-orchestrator/<repo>/` as the target layout. The shipped implementation uses numeric-prefix paths for vault ordering. If you need the issue-text path, file a new issue — do NOT silently change the script.
+**Per-project namespacing (#660).** New writes are namespaced under a per-repo subdirectory `<repo>/`, so a single shared vault can hold notes from multiple projects without cross-repo slug/id collisions. `<repo>` is resolved by `resolveRepoNamespace()` (`scripts/lib/vault-mirror/namespace.mjs`): the optional `vault-integration.vault-name` Session Config key (CLI: `--vault-name`) when set, else the git-origin repo slug via `deriveRepo()`, sanitised to a single kebab segment. Owner-privacy leaks (personal home path / private project slug / personal name) are redacted to `redacted-repo` before any write. The legacy **flat** layout (`40-learnings/<slug>.md`) is still read — the writer dual-probes the flat path so a pre-existing flat note is never duplicated; a one-time relocation of the historical flat corpus is tracked as a follow-up.
+
+**Path contract note:** Issue #187 shipped the flat numeric-prefix layout (deferring the per-`<repo>` subfolder it sketched). Issue #660 adds that per-repo subfolder for write-isolation (above) while keeping the numeric-prefix ordering. If you need a different layout, file a new issue — do NOT silently change the script.
 
 ## Idempotency
 
@@ -93,7 +95,7 @@ The generator marker value is `session-orchestrator-vault-mirror@1` and appears 
 
 ## Auto-Commit Phase
 
-After a successful mirror pass, `scripts/lib/vault-mirror/auto-commit.mjs` (`autoCommitVaultMirror`) optionally commits the freshly-written mirror artifacts in `40-learnings/` and `50-sessions/` as a single `chore(vault): mirror …` commit. It runs unattended at session-end Phase 3.7 / evolve Phase 3.5. The phase is fail-safe: it never throws, emits one JSON action line on stdout, and aborts (unstaging everything) if any staged path is **not** a generator-stamped mirror artifact.
+After a successful mirror pass, `scripts/lib/vault-mirror/auto-commit.mjs` (`autoCommitVaultMirror(vaultDirPath, sessionId, repo)`) optionally commits the freshly-written mirror artifacts in `40-learnings/` and `50-sessions/` as a single `chore(vault): mirror …` commit. It runs unattended at session-end Phase 3.7 / evolve Phase 3.5. The phase is fail-safe: it never throws, emits one JSON action line on stdout, and aborts (unstaging everything) if any staged path is **not** a generator-stamped mirror artifact. When the optional `repo` namespace is passed (#660), staging is scoped to `40-learnings/<repo>` + `50-sessions/<repo>` and the phase additionally aborts with reason `cross-repo-staged-changes` if any staged file belongs to a different repo's namespace — so one project's mirror run can never commit another project's notes. Omitting `repo` preserves the legacy whole-directory behaviour.
 
 ### Pre-commit hook bypass (`--no-verify`)
 
@@ -145,6 +147,61 @@ node scripts/vault-mirror.mjs \
 - **466 session notes** under `vault://50-sessions/` — same generator stamp.
 
 Both target directories were verified by direct `ls | wc -l` measurement against `~/Projects/vault/`. The numeric-prefix layout (`40-learnings/`, `50-sessions/`) confirmed correct per the Target Paths spec above.
+
+## Phase-2: Flat-Corpus Relocation (#700)
+
+`scripts/relocate-vault-corpus.mjs` is a one-time operator utility that migrates the legacy flat vault corpus (`40-learnings/*.md` + `50-sessions/*.md` at depth 1) into the per-repo namespace subdirectories introduced by #660. Running it is **never required for vault-mirror to function** — the mirror writes to `<repo>/` subfolders since #660 automatically. Relocation is a clean-up step for vaults that accumulated notes before per-repo namespacing existed.
+
+### Classifier logic
+
+The classifier (`scripts/lib/vault-relocation-rules.mjs`) reads each file's YAML frontmatter:
+
+- **Session notes** (`type: session`): derives repo from `repo:` frontmatter → first fall-through to `project/<slug>` tag → `_unsorted` fallback.
+- **Learning notes** (`type: learning`): derives repo from `project:` wikilink → `source:` free-text field → `source_session:` wikilink (transitive: looks up the session's own namespace) → `_unsorted` fallback.
+
+Every derived value routes through `resolveRepoNamespace()` (the same CP1/CP6/CP10 leak-guard used by vault-mirror) so private slugs redact to `redacted-repo` and no personal home path leaks into a namespace.
+
+Non-derivable files (`_unsorted`, `redacted-repo`, `unknown-repo`) are moved to a `_unsorted/` subfolder (or skipped entirely when `--derivable-only` is set).
+
+### Modes
+
+| Mode | Flag | What happens |
+|---|---|---|
+| Preview (default) | `--dry-run` | Read-only scan — reports `would-move` lines, writes nothing. Always run this first. |
+| Apply | `--apply` | Executes `git mv` (stages only — **no commit**). Operator reviews diff and commits separately. |
+| Confident-only apply | `--apply --derivable-only` | Like `--apply` but skips files with `confident===false` (`_unsorted`, `redacted-repo`, `unknown-repo` destinations). |
+| Rollback | `--rollback <manifest>` | Reverses a prior `--apply` run using the reverse-manifest written at `<vault-dir>/.orchestrator/relocation-manifest-<ISO>.json`. |
+
+**Scope filters:** `--learnings-only` / `--sessions-only` restrict to one corpus root.
+
+### Safety model
+
+1. **Dry-run is the default.** `--apply` must be explicit; there is no accidental write path.
+2. **`--vault-dir` is required.** No default prevents silently operating on a wrong directory.
+3. **Stage-only.** `--apply` calls `git mv` (which stages) but never commits. The operator owns the commit.
+4. **Reverse-manifest.** Every `--apply` run writes `<vault-dir>/.orchestrator/relocation-manifest-<ISO>.json`. Pass this path to `--rollback` to undo.
+5. **Structural idempotency.** Files already at depth ≥ 2 (already namespaced) are never enumerated or moved.
+6. **Destination-collision guard.** If the target path already exists, the file is skipped with `reason: dest-exists` — no data is ever overwritten.
+7. **Leak-guard guarantee.** Every derived namespace value runs through `resolveRepoNamespace()` before use. Private slugs redact to `redacted-repo`; files that would land in `redacted-repo/` are excluded by `--derivable-only` or left flat if the operator chooses.
+
+### Usage
+
+```bash
+# Step 1: Preview (dry-run default)
+node scripts/relocate-vault-corpus.mjs --vault-dir ~/Projects/vault
+
+# Step 2: Move only confident files (skip _unsorted/redacted-repo)
+node scripts/relocate-vault-corpus.mjs --vault-dir ~/Projects/vault --apply --derivable-only
+
+# Step 3 (optional): Roll back if something looks wrong
+node scripts/relocate-vault-corpus.mjs --rollback ~/Projects/vault/.orchestrator/relocation-manifest-<ISO>.json
+```
+
+Exit codes: `0` success (including dry-run); `1` input/arg error; `2` IO error. Data goes to stdout; diagnostics and summary go to stderr. Add `--json` for JSONL output (one record per file).
+
+### N-root canonical guard (named vaults)
+
+`scripts/vault-mirror.mjs` enforces that the `--vault-dir` target is a known vault (guard: git remote ends with a canonical vault suffix). Phase-2 generalises this from a single `/agents/vault` suffix to **N named suffixes** via `scripts/lib/named-vault-resolver.mjs`. When `vaults:` is declared in `owner.yaml` (see `owner-persona.md`), the guard uses `.some()` across all configured suffixes. When `vaults:` is absent, behaviour is byte-identical to the pre-#700 single-suffix path.
 
 ## Configuration
 

@@ -51,6 +51,57 @@ This runs BEFORE the local session-lock acquire in Phase 1.2 — the preamble's 
 
 Read and parse Session Config per `skills/_shared/config-reading.md`. Store result as `$CONFIG`.
 
+## Phase 1.1: Dispatcher-Autonomy Migration Capture (one-time, per-repo)
+
+> Closes session-orchestrator issue #681 (Epic #673 P3 — one-time per-repo dispatcher-autonomy capture). Migration trigger: the first session-start after this feature ships on a repo whose committed `dispatcher-autonomy:` block is still absent. Cross-reference `.claude/rules/ask-via-tool.md` (AUQ via tool, not prose).
+
+**WHEN:** Runs after Phase 1 (config read) and BEFORE Phase 1.2 (session-lock acquire). Fires **exactly once per repo** — the write makes the committed block present, so every subsequent session skips it.
+
+**WHY (one-time guard):** The committed `## Dispatcher Autonomy` block is the never-re-ask marker. Detect "block absent" via `isDispatcherAutonomyBlockPresent($CLAUDE_MD_CONTENT)` — a raw `/^dispatcher-autonomy:\s*$/m` presence check on the file content. Do NOT use the resolved autonomy value from `$CONFIG`: it returns `'off'` for BOTH "block absent" AND "block present with `autonomy: off`", so it cannot distinguish a first-run migration from a deliberate `off`. Only the raw presence check distinguishes them.
+
+> **The guard is gated purely on committed-block PRESENCE, never on the resolved value.** A machine whose effective autonomy differs from the committed default — because `SO_DISPATCHER_AUTONOMY` or `owner.yaml` `dispatcher.autonomy` overrides it — STILL counts as captured the moment the committed block exists, and is never re-asked. Conversely a host with `owner.yaml` `dispatcher.autonomy` set but NO committed block is still asked once at this migration: a host-local override does NOT satisfy the migration guard; only the committed CLAUDE.md / AGENTS.md block does. Even a header-present-but-body-malformed block counts as PRESENT (a malformed block is the operator's to fix, not a re-prompt trigger).
+
+**WHAT:** When the block is absent, the coordinator dispatches ONE `AskUserQuestion` using the definition from `scripts/lib/config/dispatcher-autonomy-capture.mjs`:
+
+- **Dispatcher autonomy** — `off` (Recommended, fail-closed) | `advisory` | `autonomous-gated`
+
+On **any** answer (including `off`) the committed block is written, presented, and never re-asked. The writer persists ONLY the committed default — host-local overrides (`SO_DISPATCHER_AUTONOMY` env, `owner.yaml` `dispatcher.autonomy`) stay host-local and NEVER land in CLAUDE.md.
+
+> **Capture writes the committed default; the runtime value flows through `resolveDispatcherAutonomy`.** This phase only persists the operator's one-time choice as the committed baseline. The EFFECTIVE autonomy at run time is resolved separately by `resolveDispatcherAutonomy()` in `scripts/lib/config/dispatcher-autonomy.mjs` with host-local precedence `SO_DISPATCHER_AUTONOMY` env > `owner.yaml` `dispatcher.autonomy` > committed > `off` (#653 pattern). Migration capture never reads or writes those override tiers — it writes the committed tier only, so a machine with an active override differs from the committed default WITHOUT re-triggering this capture.
+
+**AUQ (mandatory — use the tool, not prose):** On Claude Code / Cursor IDE, dispatch this via the **`AskUserQuestion` tool** per `.claude/rules/ask-via-tool.md` (AUQ-001) — never an inline markdown "choose 1/2/3" list. Option 1 (`off`) is the recommended, fail-closed default. Only Codex CLI (no `AskUserQuestion`) falls back to a numbered-list prose prompt (AUQ-004 exception 1).
+
+**HOW (coordinator steps):**
+
+```js
+import {
+  getDispatcherAutonomyQuestion,
+  isDispatcherAutonomyBlockPresent,
+  writeDispatcherAutonomyBlock,
+} from '$PLUGIN_ROOT/scripts/lib/config/dispatcher-autonomy-capture.mjs';
+import { readFileSync } from 'node:fs';
+
+const claudeMdPath = `${process.cwd()}/CLAUDE.md`;
+let content = '';
+try { content = readFileSync(claudeMdPath, 'utf8'); } catch { /* no CLAUDE.md — skip */ }
+if (content && !isDispatcherAutonomyBlockPresent(content)) {
+  const q = getDispatcherAutonomyQuestion(); // option 1 = 'off' (Recommended, fail-closed)
+  // Claude Code / Cursor: dispatch AskUserQuestion([q]) (the TOOL — AUQ-001); collect the
+  //   selected label (the `autonomy` enum). Never an inline numbered-list prose question here.
+  // Codex CLI fallback only (no AskUserQuestion — AUQ-004 exception 1): print q.question +
+  //   numbered q.options list, read the operator's pick, map it to the option label.
+  const autonomy = /* selected option label: 'off' | 'advisory' | 'autonomous-gated' */;
+  const result = writeDispatcherAutonomyBlock({ claudeMdPath, autonomy });
+  // result: { written: true, path } on first write; { written: false, reason: 'already-present' } if a
+  //   parallel session already wrote it OR a malformed block already exists (defensive
+  //   double-write guard re-checks absence against freshly-read content before writing).
+}
+```
+
+> Skip silently when no committed `CLAUDE.md` exists (e.g. a not-yet-bootstrapped repo) — the read failure is non-fatal. The capture then runs at bootstrap (Phase 3.5.1) instead.
+
+**WHERE:** Appended as a standalone `## Dispatcher Autonomy` H2 in the repo's committed `CLAUDE.md` (NOT a key inside `## Session Config` — the standalone-H2 placement keeps `claude-md-drift-check` Check-6 parity green).
+
 ## Phase 1.2: Session Lock Acquire (#330)
 
 > **See also Phase 0.5 (Parallel-Aware Preamble)** — the cross-worktree detection runs first. This Phase 1.2 handles the single-worktree local-lock semantics that complement the preamble.
@@ -383,6 +434,53 @@ Also read `<state-dir>/STATUS.md` if it exists for additional project-level cont
 2. If '.orchestrator/metrics/sessions.jsonl' exists, count lines to determine number of previous sessions. If not found, check `<state-dir>/metrics/sessions.jsonl` as a platform-specific legacy fallback.
 3. Store the count for display in Phase 7 — this feeds the Historical Trends section
 
+## Phase 1.7: Vault Live-Status Board (#674)
+
+> Skip this phase silently when `vault-integration.enabled` is not `true` in Session Config. Use the same `jq -r` idiom Phase 2.7 uses (`echo "$CONFIG" | jq -r '."vault-integration".enabled // false'`). When the value is anything other than `true`, do nothing and proceed to Phase 2 — no banner, no warning.
+
+When active, this phase marks THIS repo as live on the cross-repo vault board (`<vault-dir>/01-projects/_active-sessions.md`) so an operator scanning the vault can see, at a glance, which repos have a session in flight. Epic #673 / PRD §FA-1.
+
+### Config check
+
+```bash
+VAULT_ENABLED=$(echo "$CONFIG" | jq -r '."vault-integration".enabled // false')
+if [ "$VAULT_ENABLED" != "true" ]; then
+  exit 0  # silent no-op — vault integration disabled
+fi
+```
+
+### Dispatch
+
+Call the convenience entry point `mirrorBoard` from `scripts/lib/vault-status/board-writer.mjs`, naming THIS repo's row `in-progress`:
+
+```js
+import { mirrorBoard } from 'scripts/lib/vault-status/board-writer.mjs';
+
+await mirrorBoard({
+  repoRoot: process.cwd(),
+  explicitStatus: 'in-progress',
+});
+```
+
+> **Call-site contract:** OMIT `repos` for the single-repo case. `mirrorBoard` then builds the descriptor `[{ repoRoot, status: explicitStatus }]` itself. Do NOT pass `repos: [process.cwd()]` — `collectRows` requires `{ repoRoot }` object descriptors and silently skips bare path strings (`board-writer.mjs` `collectRows` guard), which would write a board with no row for this repo. Pass `repos` only as an array of `{ repoRoot }` objects when sweeping multiple repos.
+
+This single call does two things:
+
+1. **Sets THIS repo's board row to `in-progress`** with the current semantic-session-id, branch, mode, and heartbeat (read off this repo's `session.lock` v2 lease + the host-wide registry — both already written by Phase 1.2's `acquire()`).
+2. **Re-derives THIS repo's status from its live lease**, so a stale lease left by a prior crashed session in this same repo renders as `force-closed` (heartbeat older than the v2 ttl, default 4h — `DEFAULT_TTL_HOURS` in `scripts/lib/session-lock.mjs`, evaluated via `isLockLive`) and is **never silently dropped** — its fields are read straight off the dead lock. Other repos' prior rows are preserved unchanged via the idempotent merge. **Cross-repo sweep** (re-deriving *every* repo's dead-lease → `force-closed` from any session-start) requires the candidate-repo enumeration delivered in P2 (#676); until then the board reflects each repo's status as of that repo's own most recent session-start/-end.
+
+`mirrorBoard` itself re-reads Session Config, resolves the host-local vault-dir, and **silently no-ops** (returning `{ action: 'skipped-vault-disabled' }`) when `vault-integration.enabled` is not `true`, the vault-dir is absent, the vault resolves outside `$HOME`, or the config is unreadable. The Bash gate above is the fast-path skip; this internal guard is the defense-in-depth backstop — both agree on the same condition.
+
+### Safety invariants
+
+- **Generator-marked + idempotent.** The board carries the `_generator: session-orchestrator-active-sessions@1` frontmatter sentinel; repeated writes that produce identical content are no-ops, so re-running this phase never churns the file.
+- **Host-local + git-ignorable.** The board lives under the operator's vault tree (under `$HOME`), never inside any repo — it is never committed.
+- **NEVER touches the sven-owned `_overview.md`.** The writer hard-refuses any path whose basename is `_overview.md` (returns `{ action: 'skipped-handwritten' }`), and only ever overwrites files it owns (frontmatter `_generator` matches the marker). The handwritten overview is structurally safe.
+
+### Non-blocking behavior
+
+This is **best-effort**, exactly like the Phase 4 banners: a board-write failure (I/O error, thrown exception, malformed lease) MUST NOT halt session-start. Wrap the `mirrorBoard` call so any error is swallowed and logged as a single WARN line, then continue to Phase 2. Session-start is never blocked by a vault-board failure.
+
 ## Phase 2: Git Analysis (parallel)
 
 Run these checks as ONE parallel Bash block — background the independent git ops with `&` and `wait`:
@@ -585,7 +683,9 @@ Group issues by:
 
    Cross-reference: `.claude/rules/loop-and-monitor.md` (when to use `/loop` vs Monitor vs Routines) and issue #633.
 
-   All banners are non-blocking — display in the Session Overview, do not halt the session. If `bootstrap-lock-freshness.mjs` is absent (pre-#186 plugin install) or `peer-cards/staleness-banner.mjs` is absent (pre-#503 plugin install) or `loop-readiness-banner.mjs` is absent (pre-#633 plugin install), skip silently.
+   Additionally, invoke the instruction-budget probe (`scripts/lib/instruction-budget-guard.mjs`) via `checkInstructionBudget({ repoRoot })`. The helper returns `null` (silent no-op) when the always-on directive count is at or under the configured ceiling, or on any read failure. When a non-null result is returned (`{ severity: 'warn', message }`), render `result.message` alongside the other banners. Non-blocking. Cross-reference: `docs/audit/2026-06-20-instruction-budget-audit.md` and issue #687.
+
+   All banners are non-blocking — display in the Session Overview, do not halt the session. If `bootstrap-lock-freshness.mjs` is absent (pre-#186 plugin install) or `peer-cards/staleness-banner.mjs` is absent (pre-#503 plugin install) or `loop-readiness-banner.mjs` is absent (pre-#633 plugin install) or `instruction-budget-guard.mjs` is absent (pre-#687 plugin install), skip silently.
 
 ## Phase 4.5: Resource Health (v3.1.0)
 
@@ -850,6 +950,7 @@ After user alignment:
 |------|---------|
 | `soul.md` | Identity and communication principles |
 | (inline) Phase 1.2 | Session Lock Acquire — `acquire()` call, active/stale/cross-host AUQ flows, `forceAcquire()` on user consent, deviation note wiring |
+| (inline) Phase 1.7 | Vault Live-Status Board (#674) — `mirrorBoard()` from `scripts/lib/vault-status/board-writer.mjs`; gated on `vault-integration.enabled: true`; marks this repo `in-progress` + runs the lease staleness sweep (`force-closed`); generator-marked + idempotent; never touches `_overview.md`; non-blocking |
 | `presentation-format.md` | Phase 8 output templates and AskUserQuestion examples |
 | `phase-2-5-docs-planning.md` | Phase 2.5 full procedural body — docs-orchestrator config, audience detection, AUQ confirmation, result block emission, non-overlap rules |
 | (inline) Phase 2.6 | Steering docs gate + load — reads `.orchestrator/steering/{product,tech,structure}.md`; silent no-op when directory absent |

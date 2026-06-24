@@ -65,11 +65,19 @@ Threads view groups related calls so long chats, subagents, and auto-review pass
 
 ![Threads view with one expanded thread and its calls in chronological order.](docs/assets/dashboard-threads.png?v=readme-drilldown)
 
+Diagnostics surfaces on-demand snapshot reports for tool output, commands, Git interactions, file reads, file modifications, read productivity, and concentration without tying them to the normal live refresh loop.
+
+![Diagnostics view showing weekly usage remaining and projected weekly credits from on-demand usage-drain reports.](docs/assets/dashboard-diagnostics.png?v=readme-usage-drain)
+
+The Git Interactions panel expands the safe Git and GitHub CLI operation families without storing command text, branch names, release notes, or patch content.
+
+![Diagnostics Git Interactions panel showing aggregate Git and GitHub CLI operation counts.](docs/assets/dashboard-diagnostics-git-expanded.png?v=readme-diagnostics-git)
+
 Insights still gives a fast triage layer for costly threads, low cache reuse, context bloat, and pricing gaps.
 
 ![Insights view with ranked Needs Attention cards, investigation presets, and top threads by attention score.](docs/assets/dashboard-insights.png?v=readme-drilldown)
 
-The dashboard screenshots use synthetic aggregate fixture data, and the companion prompt and chat previews are synthetic. They do not contain prompts from local logs, assistant responses, tool output, real thread names, real usage totals, or real Codex session content. See the [Dashboard Guide](docs/dashboard-guide.md) for the full walkthrough.
+The dashboard screenshots use synthetic aggregate fixture data, and the companion prompt and chat previews are synthetic. They do not contain prompts from local logs, assistant responses, real tool output, real thread names, real usage totals, or real Codex session content. See the [Dashboard Guide](docs/dashboard-guide.md) for the full walkthrough.
 
 If this helped you track Codex usage, starring the repo helps others find it. Issues and feature requests are welcome.
 
@@ -150,13 +158,13 @@ Optional allowance context:
 codex-usage-tracker parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"
 ```
 
-The tracker cannot read your logged-in ChatGPT plan or live remaining usage automatically. Allowance values are only as accurate as the values you manually copy from Codex Settings, `/status`, or another trusted usage display. Details: [Pricing, Credits, And Allowance](docs/pricing-and-credits.md).
+The tracker cannot read your logged-in ChatGPT plan or live remaining usage automatically. When local Codex logs include `token_count.rate_limits`, the dashboard can show the latest observed 5-hour and weekly remaining percentages from those logs. Otherwise, allowance values are only as accurate as the values you manually copy from Codex Settings, `/status`, or another trusted usage display. Details: [Pricing, Credits, And Allowance](docs/pricing-and-credits.md).
 
 ## What It Includes
 
 - Local SQLite index at `~/.codex-usage-tracker/usage.sqlite3`.
 - Static dashboard generation plus localhost live refresh.
-- `Insights`, `Calls`, and `Threads` dashboard views.
+- `Insights`, `Calls`, `Threads`, and `Diagnostics` dashboard views, including on-demand usage-drain report runs with cumulative per-thread cost curves.
 - Active-only dashboards by default, with an explicit `All history` toggle for archived sessions.
 - CLI summaries, queries, CSV export, dashboard generation, doctor checks, and support bundles.
 - MCP tools for Codex sessions that want to query local usage data.
@@ -235,6 +243,7 @@ Full model: [Privacy Guide](docs/privacy.md).
 - [Privacy Guide](docs/privacy.md)
 - [Architecture](docs/architecture.md)
 - [CLI And MCP JSON Schemas](docs/cli-json-schemas.md)
+- [Usage Drain Modeling](docs/usage-drain-modeling.md)
 - [Development And Release](docs/development.md)
 
 ## Codex-Assisted Install
@@ -258,7 +267,7 @@ This is optional. The normal shell install above is the fastest trusted path for
 - Token counts come from Codex's logged counters; the tracker does not re-tokenize prompts.
 - Pricing and rate-card sources can change outside this project.
 - Pricing and Codex credit estimates depend on local rate data and confidence labels and are not guaranteed to match exact billing.
-- Live account allowance cannot be read automatically by this local tracker; remaining 5-hour and weekly allowance is only available when you configure copied values.
+- Live account allowance cannot be read automatically by this local tracker; remaining 5-hour and weekly allowance is shown only from local Codex `token_count.rate_limits` snapshots when present, or from copied values you configure.
 - Local Codex logs may not include usage from other ChatGPT agentic surfaces that share the same allowance.
 - Plugin discovery limitations are separate from core Python CLI/dashboard support.
 - Parent-child thread relationships are only as good as the metadata Codex logs; inferred auto-review attachments are labeled as inferred.

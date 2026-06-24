@@ -1,7 +1,7 @@
 {
-  "generator": "manual-maintained",
+  "generator": "codex-sync",
   "source_skill": "skills/flywheel",
   "layout": "modular",
-  "source_hash": "59f85fed50538a3f1fd90ea96f499f1d0fe8fcba498c5b36ed5f695c3884e3cb",
-  "generated_hash": "86c678a2c67031c06568eadac60b79c62d9d2e8ce718202b812fad03611fdef5"
+  "source_hash": "0dac2c985bd7904576af11b8e739e2af41ec9478ad55a988b9351a2e75ab0446",
+  "generated_hash": "8592c8b4d508afc168aa200ff6d099a12a5404acd05222a50138feec7887c547"
 }

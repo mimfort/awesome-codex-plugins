@@ -55,6 +55,9 @@ rules:
   - id: R024
     description: Workloads with official health checks must define livenessProbe/readinessProbe and startupProbe using official endpoints/commands.
     severity: error
+  - id: R046
+    description: Official multi-component RuntimeBundleEvidence must match emitted images, components, routes, and critical env vars.
+    severity: error
   - id: R036
     description: CronJob resources must define cloud.sealos.io/cronjob, cronjob-launchpad-name, and cronjob-type labels with required values.
     severity: error
@@ -77,7 +80,7 @@ rules:
     description: Database cluster component resources must use limits cpu=500m/memory=512Mi and requests cpu=50m/memory=51Mi.
     severity: error
   - id: R039
-    description: Database services must use KubeBlocks Cluster resources instead of raw Deployment or StatefulSet workloads.
+    description: Database services must use KubeBlocks Cluster resources instead of raw Kubernetes resources.
     severity: error
   - id: R038
     description: Managed workload container resources must use allowed Sealos limits ladder values and derive requests from limits.
@@ -120,6 +123,9 @@ rules:
     severity: error
   - id: R044
     description: Binary optional object storage/S3 branches must be controlled by boolean inputs.
+    severity: error
+  - id: R045
+    description: Template artifacts must declare every referenced inputs.<name> key in the same Template CR spec.inputs.
     severity: error
   - id: R031
     description: Root-path Prefix Ingress resources must use one component name across metadata.name, cloud.sealos.io/app-deploy-manager, and backend service names; non-root or non-Prefix routes may differ.

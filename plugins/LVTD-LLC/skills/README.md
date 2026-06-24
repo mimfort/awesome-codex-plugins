@@ -6,28 +6,80 @@ Reusable agent skills for LVTD projects, Django SaaS workflows, and agent-first 
 
 This repository is intentionally simple: every skill lives in `skills/<skill-name>/SKILL.md`, with small validation and publishing scripts around that catalog. That shape works well for agents that read skill folders directly, and it is easy for external indexes like skills.sh to consume.
 
-## Skills
+## Common Workflows
 
-| Skill | Use when |
-| --- | --- |
-| [`alpinejs-django`](skills/alpinejs-django/SKILL.md) | Adding, changing, or debugging Alpine.js behavior in Django templates, especially when HTMX partial swaps are also present. |
-| [`calibredb`](skills/calibredb/SKILL.md) | Managing and querying Calibre libraries with the calibredb CLI, including metadata, formats, exports, checks, and full-text search. |
-| [`cookiecutter`](skills/cookiecutter/SKILL.md) | Adding, changing, testing, or debugging Cookiecutter templates, including Jinja rendering, hooks, option cleanup, and generated-project validation. |
-| [`django-htmx`](skills/django-htmx/SKILL.md) | Building and reviewing HTMX interactions in Django server-rendered apps, including partial responses, headers, swaps, triggers, forms, and tests. |
-| [`django-q2`](skills/django-q2/SKILL.md) | Adding, changing, testing, or debugging Django Q2 background jobs, schedules, workers, and broker configuration. |
-| [`fastmcp-django`](skills/fastmcp-django/SKILL.md) | Adding, changing, deploying, testing, or debugging FastMCP MCP servers in existing Django apps, including ASGI mounting, ORM access, auth, and Streamable HTTP deployment. |
-| [`make-product-viral`](skills/make-product-viral/SKILL.md) | Making a product, landing page, pricing page, launch page, free tool, or social preview easier to understand, buy, remember, and share. |
-| [`rust-api-test-harness`](skills/rust-api-test-harness/SKILL.md) | Adding, changing, testing, or debugging Rust HTTP APIs with black-box integration tests, random-port app startup, state isolation, mocks, and CI-ready cargo checks. |
-| [`rust-deployable-service`](skills/rust-deployable-service/SKILL.md) | Preparing, containerizing, configuring, testing, or reviewing Rust services for deployment, including Docker, runtime config, secrets, health checks, SQLx offline builds, and startup validation. |
-| [`rust-domain-boundaries`](skills/rust-domain-boundaries/SKILL.md) | Modeling, validating, refactoring, or reviewing Rust service domain boundaries with newtypes, parse-don't-validate constructors, request DTO boundaries, and property tests. |
-| [`rust-error-observability`](skills/rust-error-observability/SKILL.md) | Adding, changing, debugging, or reviewing Rust service error handling and observability, including typed errors, HTTP response adapters, tracing spans, and redaction. |
-| [`rust-idempotent-workflows`](skills/rust-idempotent-workflows/SKILL.md) | Designing, implementing, testing, or debugging Rust service workflows that must survive retries, duplicate requests, crashes, concurrency, queues, and side effects. |
-| [`rust-service-security`](skills/rust-service-security/SKILL.md) | Adding, changing, testing, or reviewing security-sensitive Rust web service behavior, including login, password hashing, session cookies, route protection, and auth middleware. |
-| [`rust-sqlx-postgres-service`](skills/rust-sqlx-postgres-service/SKILL.md) | Adding, changing, testing, or reviewing Postgres persistence in Rust services using SQLx migrations, compile-time checked queries, pools, transactions, and integration tests. |
+Start with [`lvtd-skills-router`](skills/lvtd-skills-router/SKILL.md) when you
+are not sure which skill fits. It routes by domain and desired outcome, then
+points the agent at the smallest useful set of skills.
+
+- **Django SaaS work**: use `django-htmx` for server-rendered partial updates,
+  `alpinejs-django` for local template behavior, `django-q2` for background
+  jobs, `fastmcp-django` for MCP servers inside Django apps, and the
+  `django-test-*` skills when test suites need profiling, faster data setup,
+  parallelism, or CI optimization.
+- **Rust service and game work**: use `rust-api-test-harness` for black-box HTTP
+  integration tests, then reach for the Rust service skills when the work
+  involves SQLx/Postgres, domain boundaries, observability, security,
+  idempotent workflows, or deployment readiness. For language-level Rust work,
+  use the ownership, trait API, iterator/collection, concurrency, async, unsafe,
+  and FFI skills. For small Rust games, use the game-slice, game-loop, tilemap,
+  ECS, turn-intent, procgen/AI, data-driven content, and release-polish skills.
+- **SEO and organic growth**: use `seo-opportunity-research` to find demand,
+  `seo-persona-intent-mapping` to clarify audience and intent,
+  `product-led-seo-strategy` to shape the strategy, `seo-roadmap-prioritization`
+  to sequence work, and `technical-seo-triage` for indexing or traffic issues.
+- **Useful nonfiction books**: use `book-toc-lab` to shape the promise, scope,
+  reader outcome, and takeaway-first table of contents; use
+  `book-reader-conversations` for pre-draft validation,
+  `technical-book-lab-design`, `technical-manuscript-verification`, and
+  `evergreen-technical-book` for practical technical books, and
+  `manuscript-engagement-analytics` plus the other nonfiction skills for reader
+  experience edits, beta feedback, seed marketing, sales optimization, and
+  self-publishing production.
+- **Customer discovery**: use `customer-discovery-conversations` to plan
+  better customer conversations, then use the related skills for segment
+  slicing, conversation access, commitment validation, and notes synthesis.
+- **Startup traction**: use the traction skills to choose channels, research
+  comparable growth paths, design cheap tests, review results, and plan
+  channel-specific experiments.
+- **Product and launch polish**: use `make-product-viral` to improve clarity,
+  memorability, buying intent, and shareability on product-facing surfaces.
+- **Catalog and template operations**: use `calibredb` for Calibre library
+  operations and `cookiecutter` for template authoring, hooks, and generated
+  project validation.
+
+## Skill Discovery
+
+Use [`lvtd-skills-router`](skills/lvtd-skills-router/SKILL.md) when you are not
+sure which skill fits. The complete catalog lives in `skills/` and the generated
+registry; this README intentionally groups workflows instead of mirroring every
+skill file.
+
+Skill areas:
+
+- **Django**: server-rendered UI, HTMX, Alpine.js, background jobs, MCP servers,
+  and Django test-suite optimization.
+- **Rust**: HTTP API test harnesses, SQLx/Postgres persistence, domain
+  boundaries, observability, security, idempotent workflows, deployment,
+  ownership/borrowing, trait API design, iterators/collections, concurrency,
+  async tasks, unsafe boundaries, FFI wrappers, and 2D game development
+  workflows for planning, loops, tilemaps, ECS, turns, procgen, content, and
+  release.
+- **SEO**: opportunity research, persona-intent mapping, product-led strategy,
+  roadmap prioritization, and technical SEO triage.
+- **Nonfiction writing**: table-of-contents design, reader experience editing,
+  beta feedback, seed marketing, sales optimization, and production.
+- **Customer discovery**: customer interview planning, segment slicing,
+  conversation access, commitment validation, and learning synthesis.
+- **Traction**: Bullseye channel selection, channel research, cheap tests,
+  experiment reviews, and channel-specific playbooks.
+- **Utilities**: Cookiecutter template development, Calibre library operations,
+  and product/launch polish.
 
 ## Repository Layout
 
 ```text
+CONTEXT.md
 skills/
   <skill-name>/
     SKILL.md
@@ -73,22 +125,26 @@ Add the marketplace in Claude Code:
 
 ```text
 /plugin marketplace add LVTD-LLC/skills
+/plugin install router@lvtd-skills
 /plugin install django@lvtd-skills
 /reload-plugins
 ```
 
-Claude Code exposes the bundled skills as `/django:django-htmx`,
-`/django:django-q2`, and the other skills in that plugin.
+Claude Code exposes the router as `/router:lvtd-skills-router`. Domain plugins
+expose bundled skills such as `/django:django-htmx`, `/django:django-q2`, and
+the other skills in each plugin.
 
 Add the marketplace in Codex:
 
 ```bash
 codex plugin marketplace add LVTD-LLC/skills
+codex plugin add router@lvtd-skills
 codex plugin add django@lvtd-skills
 ```
 
-Codex exposes the bundled skills as `$django:django-htmx`,
-`$django:django-q2`, and the other skills in that plugin.
+Codex exposes the router as `$router:lvtd-skills-router`. Domain plugins expose
+bundled skills such as `$django:django-htmx`, `$django:django-q2`, and the other
+skills in each plugin.
 
 To pick up a marketplace update for an already-installed Codex plugin, refresh
 the marketplace snapshot and reinstall the plugin:
@@ -120,8 +176,11 @@ npm run build
 Generated marketplace plugin IDs:
 
 - `cookiecutter`
+- `customer-discovery`
 - `django`
+- `eighty-twenty`
 - `nonfiction-book-writing`
+- `router`
 - `rust`
 - `seo`
 - `traction`
@@ -134,6 +193,73 @@ CLI still use the canonical skill directory names.
 See [`docs/marketplace-strategy.md`](docs/marketplace-strategy.md) for the
 research-backed plan to publish this catalog across Codex, Claude Code,
 OpenClaw, and other Agent Skills-compatible clients.
+
+## Attribution
+
+This catalog is built from transformed, task-oriented guidance rather than
+copied source text. Book-derived skills paraphrase operational ideas, keep
+source traceability in the relevant skill files where useful, and are not
+official material from the authors, libraries, tools, or platforms below.
+
+Primary books and long-form sources:
+
+- *The Mom Test* by Rob Fitzpatrick: customer discovery conversations, segment
+  slicing, conversation access, commitment validation, and learning notes.
+- *Write Useful Books* by Rob Fitzpatrick: useful nonfiction book planning,
+  reader experience, beta feedback, seed marketing, sales optimization, and
+  self-publishing production patterns.
+- *Traction: How Any Startup Can Achieve Explosive Customer Growth* by Gabriel
+  Weinberg and Justin Mares: Bullseye channel selection, traction goals,
+  cheap channel tests, review workflows, and channel-specific playbooks.
+- *80/20 Sales and Marketing* by Perry Marshall: power-law analysis, market
+  selection, traffic strategy, conversion messaging, funnel economics,
+  USP/guarantee work, customer value, and time/team leverage.
+- *Product-Led SEO* by Eli Schwartz: product-led SEO strategy, opportunity
+  research, persona-intent mapping, roadmap prioritization, and technical SEO
+  triage.
+- *Ultimate Guide to Link Building* by Garrett French and Eric Ward:
+  link-building strategy, linkable assets, prospecting, prospect
+  qualification, outreach, broken link building, guest posts, and local
+  sponsorship link building.
+- *Zero to Production in Rust* by Luca Palmieri: Rust HTTP API testing,
+  SQLx/Postgres service boundaries, deployable service patterns, security,
+  observability, domain boundaries, and idempotent workflows.
+- *Programming Rust* by Jim Blandy, Jason Orendorff, and Leonora F. S. Tindall:
+  Rust ownership/borrowing, traits, iterators/collections, concurrency,
+  async task design, unsafe boundaries, and FFI wrappers.
+- *Hands-On Rust* by Herbert Wolverson: Rust game slice planning, bracket-lib
+  game loops, tile maps and cameras, ECS gameplay, turn/intent systems,
+  roguelike procedural generation and AI, data-driven content, and release
+  polish.
+
+Short-form sources and public posts:
+
+- Marc Lou's ["32 Principles of a Viral Product"](https://x.com/marclou/status/2065385672991752210)
+  post on X inspired `make-product-viral`.
+
+Libraries, tools, and official documentation referenced while authoring skills:
+
+- Agent Skills documentation and best practices, Claude Code skills/plugins and
+  plugin marketplace docs, OpenAI Codex plugin docs, OpenClaw skills/plugins
+  docs, and the `skills` CLI.
+- Django, HTMX, `django-htmx`, Alpine.js, `django-q2`, FastMCP, Cookiecutter,
+  Calibre/`calibredb`, pytest-style Django testing, and related Python web
+  tooling.
+- Rust ecosystem libraries and tools used in guidance and examples, including
+  Actix, Axum, Tokio, SQLx, PostgreSQL, Docker, `tracing`, `thiserror`,
+  `anyhow`, `wiremock`, Cargo verification workflows, `bracket-lib`, Legion,
+  Bevy ECS, Serde, and RON.
+
+Skill authoring and review resources:
+
+- Project-installed helper skills: `ebook-analysis`, `skill-from-book`,
+  `skill-creator`, `write-a-skill`, and `pdf`.
+- Compound Engineering plugin workflows, including work execution, session
+  history, review, and shipping guidance.
+- Superpowers plugin workflows for planning, execution, verification, and
+  branch-finishing discipline.
+- Greptile review feedback and the HOL Plugin Scanner were used as review and
+  validation inputs on parts of the catalog.
 
 ## Development
 

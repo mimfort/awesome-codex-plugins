@@ -402,7 +402,7 @@ Review `<state-dir>/rules/` files that are relevant to this session's work:
 
 > **Ownership Reference:** See `skills/_shared/state-ownership.md`. session-end is authorized to set `status: completed` plus the optional `updated` timestamp (#184), and — as of Phase A of Epic #271 — the 5 Recommendation fields written by Phase 3.7a. No other fields.
 
-> **Runtime Ordering Note (Epic #271 Phase A):** Phase 3.4's `status: completed` write executes LAST in Phase 3, AFTER Phase 3.7 (sessions.jsonl) and Phase 3.7a (Compute and Write Recommendations). The ordinal position here (3.4) is kept for historical compatibility; the canonical runtime order is `3.1 → 3.2 → 3.3 → 3.4a → 3.5 → 3.5a → 3.6 → 3.6.5 → 3.6.7 → 3.7 → 3.7a → 3.7b → 3.4`. Rationale: Phase 3.7a reads in-memory session metrics and writes the 5 Recommendation fields via `updateFrontmatterFields`; that write must complete BEFORE the STATE.md frontmatter is finalized with `status: completed` so the Recommendation fields are visible to the next session-start while STATE.md is still `status: active`. Crash-resilience: if `/close` aborts between 3.7a and 3.4, STATE.md carries `status: active` + Recommendations; session-start Phase 1.5 offers resume (and the banner renders). If the reverse ordering were used (status: completed first), a crash would leave `status: completed` without Recommendations — the Reader would silently no-op the banner, losing the handoff.
+> **Runtime Ordering Note (Epic #271 Phase A):** Phase 3.4's `status: completed` write executes LAST in Phase 3, AFTER Phase 3.7 (sessions.jsonl) and Phase 3.7a (Compute and Write Recommendations). The ordinal position here (3.4) is kept for historical compatibility; the canonical runtime order is `3.1 → 3.2 → 3.3 → 3.4a → 3.5 → 3.5a → 3.6 → 3.6.5 → 3.6.7 → 3.6.8 → 3.7 → 3.7a → 3.7b → 3.7c → 3.4`. Rationale: Phase 3.7a reads in-memory session metrics and writes the 5 Recommendation fields via `updateFrontmatterFields`; that write must complete BEFORE the STATE.md frontmatter is finalized with `status: completed` so the Recommendation fields are visible to the next session-start while STATE.md is still `status: active`. Crash-resilience: if `/close` aborts between 3.7a and 3.4, STATE.md carries `status: active` + Recommendations; session-start Phase 1.5 offers resume (and the banner renders). If the reverse ordering were used (status: completed first), a crash would leave `status: completed` without Recommendations — the Reader would silently no-op the banner, losing the handoff.
 
 > Gate: Only run if `persistence` is enabled in Session Config and `<state-dir>/STATE.md` exists.
 1. Set frontmatter `status: completed`
@@ -682,6 +682,117 @@ Cross-reference: PRD F2.5 acceptance criteria (#506); `scripts/lib/auto-dialecti
 > - **/evolve → runDialecticDeriver (not direct dispatchAgent):** /evolve owns argument parsing, config resolution, dry-run/apply gating, error-handling, and sidecar writes; runDialecticDeriver owns the pure derivation pipeline (load → payload → budget-check → dispatch → parse → guard). Separating skill-level orchestration from deriver business logic lets unit tests exercise the deriver without standing up the full evolve skill.
 > - **runDialecticDeriver → dispatchAgent (DI boundary):** per `.claude/rules/prompt-caching.md:3`, session-orchestrator forbids direct `@anthropic-ai/sdk` imports in business logic (the harness manages caching at the platform layer). dispatchAgent is the injected boundary — the evolve skill wires the real `Agent({...})` harness call at runtime, tests pass a `vi.fn()` mock. Same DI shape as `scripts/lib/autopilot.mjs::runLoop({opts})` (cf. `scripts/dialectic-deriver.mjs:7-16,531`).
 
+### 3.6.8 Reconciliation Rule Proposals (#696, FA3)
+
+> Gate: Skip this phase entirely when ANY of:
+> - `persistence` is `false` in Session Config
+> - `reconcile.enabled` is `false` (default: `false` — opt-in; this is the silent no-op path for all repos that have not opted in)
+> - `.orchestrator/metrics/learnings.jsonl` does not exist OR contains zero entries
+
+After the auto-dialectic nudge decision is made (Phase 3.6.7), and when the reconcile engine is enabled, run the **reconciliation engine** to turn high-confidence learnings into conditional-rule proposals and present them to the operator via `AskUserQuestion` multiSelect. Approved proposals flow to `.claude/rules/` via `writeApprovedRules`. Rejected proposals are archived to `.orchestrator/reconcile.rejected.log`. The engine NEVER writes `.claude/rules/` itself — every write is operator-AUQ-gated (#693 FA2/FA3 brandmauer).
+
+#### Coordinator-direct procedure
+
+1. Read Session Config: `reconcile.enabled` (default `false`), `reconcile['rule-expiry-days']` (default `null` — falls back to per-type TTL in the engine), `reconcile['confidence-floor']` (default `0.5`). If `reconcile.enabled` is not `true`, log `reconcile: disabled (reconcile.enabled=false)` and skip all remaining steps.
+
+2. Invoke `runReconcile` from `scripts/lib/reconcile/engine.mjs`:
+
+   ```javascript
+   import { runReconcile } from '${PLUGIN_ROOT}/scripts/lib/reconcile/engine.mjs';
+   const { proposals, rejected, summary, error } = await runReconcile({
+     repoRoot: process.cwd(),
+     ruleExpiryDays: config.reconcile['rule-expiry-days'] ?? undefined,
+     now: new Date(),
+   });
+   ```
+
+   `runReconcile` NEVER throws. If `error` is present on the return value, treat it as a non-fatal failure (see Failure modes below). `proposals` is an array of `{ learningKey, slug, path, content, confidence, candidateId, status: 'proposed' }`; `rejected` carries the ineligible or already-proposed learnings with their audit reasons; `summary` carries `{ eligible, proposed, rejected, errors }` counts.
+
+   > **Note:** `runReconcile` does NOT itself apply a confidence floor — the engine proposes every *eligible* learning and carries each one's `confidence` through. The operator's `reconcile['confidence-floor']` is the **delivery gate**, applied in the next step.
+
+2b. **Apply the confidence floor (delivery gate).** Filter the engine's proposals by `reconcile['confidence-floor']` (default `0.5`) BEFORE the sidecar write and AUQ, so only sufficiently-confident proposals reach the operator:
+
+   ```javascript
+   const floor = config.reconcile['confidence-floor'] ?? 0.5;
+   const surfaced = proposals.filter((p) => typeof p.confidence === 'number' && p.confidence >= floor);
+   ```
+
+   For the remainder of this phase, operate on `surfaced` wherever "proposals" is referenced below. Low-confidence proposals are neither surfaced nor written; they remain eligible in a future session if their confidence rises (the idempotency sidecar does not mark them processed because they were never approved/written).
+
+3. If `surfaced.length === 0`: log `reconcile: 0 proposals above confidence floor (eligible=${summary.eligible}, rejected=${summary.rejected}, floor=${floor})` and continue. No AUQ, no sidecar write.
+
+4. **Write the human-readable proposal sidecar** `.orchestrator/metrics/reconcile-pending.md` so the operator can review raw content outside the AUQ:
+
+   ```
+   # Reconciliation Rule Proposals — <ISO timestamp>
+   Session: <sessionId>
+   Engine: ${summary.eligible} eligible → ${summary.proposed} proposed, ${summary.rejected} rejected; ${surfaced.length} above confidence floor
+   
+   ---
+   
+   ## Proposal 1 of N — <slug> (conf=<confidence>)
+   
+   <content>
+   
+   ---
+   
+   ## Proposal 2 of N — ...
+   ```
+
+   Write failures are non-fatal — log WARN and continue to the AUQ.
+
+5. **AUQ pagination logic**: partition proposals into FIFO batches of 4 inline:
+
+   - Empty proposals → silent skip (gate step 3 already handles this).
+   - 1–4 proposals → single multiSelect call with all proposals as options.
+   - 5+ proposals → sequential multiSelect calls in batches of 4 (FIFO order; final batch may have < 4 proposals).
+
+   ```javascript
+   const BATCH_SIZE = 4;
+   const batches = [];
+   if (Array.isArray(surfaced) && surfaced.length > 0) {
+     for (let i = 0; i < surfaced.length; i += BATCH_SIZE) {
+       batches.push(surfaced.slice(i, i + BATCH_SIZE));
+     }
+   }
+   ```
+
+   Iterate `batches` and emit one `AskUserQuestion` per batch with `header: "Reconciliation — Confirm Rule Proposals (Batch N of M)"`. Option label format: `<slug-40> | conf=<confidence>`. Option description: first 80 chars of the rendered `content` (the rule prose preview). `multiSelect: true`.
+
+6. After all batches are answered, partition proposals into `approved` (any option selected across all batches) and `rejected` (all unselected). Proposals the operator rejected join the engine's `rejected` array for archival.
+
+7. Invoke `writeApprovedRules` from `scripts/lib/reconcile/writer.mjs`:
+
+   ```javascript
+   import { writeApprovedRules } from '${PLUGIN_ROOT}/scripts/lib/reconcile/writer.mjs';
+   const writeResult = await writeApprovedRules({
+     approved,
+     rejected: [...rejected, ...operatorRejected],
+     repoRoot: process.cwd(),
+     sessionId,
+   });
+   // writeResult = { written: number, archived: number, errors: string[] }
+   ```
+
+   `writeApprovedRules` is lock-serialised (via `withFileLock` on `.orchestrator/rules.lock`) and writes each approved proposal to `.claude/rules/<slug>.md`. Rejected proposals (engine-rejected + operator-rejected) are archived to `.orchestrator/reconcile.rejected.log` with reason `user-declined` for operator-rejected and the engine's own audit reason for engine-rejected.
+
+8. Log outcome for Phase 6 Final Report: `reconcile: ${surfaced.length} surfaced → ${approved.length} approved (written: ${writeResult.written}), ${operatorRejected.length} operator-declined${writeResult.errors.length > 0 ? `, ${writeResult.errors.length} write-errors (see sweep.log)` : ''}`.
+
+#### Failure modes
+
+- If `runReconcile` returns an `error` field (top-level exception caught internally): log `⚠ reconcile: engine error (${error}) — skipping`; do not block session close. No AUQ, no sidecar write.
+- If the sidecar write (step 4) fails: log warning `⚠ reconcile: reconcile-pending.md write failed (${err})`; continue to the AUQ regardless.
+- If `writeApprovedRules` reports per-rule errors in `writeResult.errors`: log each to `.orchestrator/metrics/sweep.log` and continue. Per-rule fault isolation — one failed write does not prevent the others.
+- All failures are non-fatal. Session close is never blocked by reconcile errors — same posture as Phase 3.6.7.
+
+#### Cross-references
+
+- Issues: #696 (FA3 Advisory Delivery), #693 (Epic — Reconciliation Engine), #695 (FA2 engine), #697 (FA4 Guardrails — next phase)
+- Modules: `scripts/lib/reconcile/engine.mjs` (`runReconcile`) · `scripts/lib/reconcile/writer.mjs` (`writeApprovedRules`) · `scripts/lib/config/reconcile.mjs` (`_parseReconcile`)
+- Sibling modules: `scripts/lib/reconcile/{eligibility,emitter,renderer,idempotency}.mjs`
+- Sibling phases: 3.6.3 Memory-Proposals Collection (#501), 3.6.5 Auto-Dream (#502), 3.6.6 Skill-Applied Judge (#645 L3), 3.6.7 Auto-Dialectic (#506)
+- AUQ spec: `.claude/rules/ask-via-tool.md` AUQ-004 (coordinator-only; this AUQ runs in the coordinator, not in a subagent)
+
 ### 3.7 Write Session Metrics
 
 Read `skills/session-end/session-metrics-write.md` for JSONL append, vault-mirror invocation, and behavior matrix.
@@ -709,6 +820,28 @@ Calls `computeV0Recommendation({completionRate, carryoverRatio, carryoverIssues}
 Wraps the already-completed Phase 3.7 + 3.7a writes with `withDurableCommit` (from `scripts/lib/autopilot/durable-telemetry.mjs`) for the two session-end-owned files: `.orchestrator/metrics/sessions.jsonl` and `<state-dir>/STATE.md`. `enabled: false` keeps local closes a no-op (`{ok: true, skipped: true}`); the flag flips `true` only in cloud Routines execution so telemetry survives ephemeral-clone reclamation. `autopilot.jsonl` is NOT in scope here — `scripts/lib/autopilot/loop.mjs` owns its commit (#490 Wave-2).
 
 **See `phase-3-7a-recommendations.md` § Phase 3.7b for the full `withDurableCommit` invocation.**
+
+### Phase 3.7c: Vault Board → Closed (#674)
+
+> Gate: Skip silently when `vault-integration.enabled` is not `true` in Session Config (the underlying helper also self-no-ops, so this is defense-in-depth, not the sole gate).
+
+> **Ordering:** Runs AFTER Phase 3.7b (durable-commit) and BEFORE Phase 3.4 (`status: completed`) and Phase 3.8 (Session Lock Release). See the Phase 3.4 Runtime Ordering Note canonical order. Running before lock-release is deliberate — the session-lock lease still exists when the board is finalized, so the board's `in-progress → closed` transition is derived against a live lock rather than a phantom one. This mirrors the #490 durableCommit ordering discipline: persist/finalize the cross-repo status while the lease is still held, then release.
+
+Transition THIS repo's live-status board row to `closed` so a cross-repo observer sees the session has ended. Invoke `mirrorBoard` from `scripts/lib/vault-status/board-writer.mjs` with an explicit `closed` status for the current repo:
+
+```javascript
+import { mirrorBoard } from 'scripts/lib/vault-status/board-writer.mjs';
+
+const boardResult = await mirrorBoard({
+  repoRoot: process.cwd(),
+  explicitStatus: 'closed',        // force THIS repo's row to `closed`
+});
+// boardResult.action ∈ { 'written', 'skipped-noop', 'skipped-handwritten', 'skipped-vault-disabled', 'dry-run' }
+```
+
+> **Note (single-repo close path):** with `repos` omitted, `mirrorBoard` builds the repo descriptor itself as `[{ repoRoot, status: explicitStatus }]` — this is the supported single-repo shape, so `explicitStatus: 'closed'` lands on THIS repo's row. (When a caller DOES pass `repos`, each element must be a `{ repoRoot, repoName?, status? }` object, NOT a bare path string — bare strings are silently skipped by `collectRows`.) The board at `<vault-dir>/01-projects/_active-sessions.md` is generator-owned: `mirrorBoard` refuses to touch any file lacking the `session-orchestrator-active-sessions@1` marker, hard-refuses `_overview.md`, and is idempotent (a re-run after the row is already `closed` returns `skipped-noop`). Rows for repos NOT in this update are preserved verbatim by the idempotent merge.
+
+**Non-blocking:** a `mirrorBoard` failure (any non-`written`/`skipped-*` outcome, thrown error, or unreachable vault) MUST NOT block the close. Log a single `WARNING: vault board → closed failed — <reason>; continuing close` line and proceed to Phase 3.4 / 3.8. The board is an observability convenience, not a close-out invariant.
 
 ## Phase 3.8: Session Lock Release (#330)
 
@@ -980,9 +1113,11 @@ Present to the user:
 | (inline) Phase 3.6.5 | Auto-Dream nudge — `shouldDispatchAutoDream` + manual-cadence nudge to run /memory-cleanup --dry-run next session (no live dispatch — #614) |
 | (inline) Phase 3.6.6 | Skill-Applied Judge (#645 L3) — default OFF; when `skill-evolution.judge: true`, `runSkillJudge` does a LIVE read-only haiku dispatch returning JSON; the COORDINATOR writes advisory judgments to `.orchestrator/metrics/skill-judgments.jsonl` (#614-safe: agent returns, coordinator writes) |
 | (inline) Phase 3.6.7 | Auto-Dialectic nudge — `shouldDispatchAutoDialectic` + manual-cadence nudge to run /evolve --dialectic next session + advances `.orchestrator/dialectic-last-run` (no live dispatch — #614) |
-| `session-metrics-write.md` | Phase 3.7 JSONL append, vault-mirror invocation, and behavior matrix |
+| (inline) Phase 3.6.8 | Reconciliation Rule Proposals (#696 FA3) — `runReconcile` + AUQ multiSelect batch-of-4 + `writeApprovedRules`; gated on `reconcile.enabled` (default `false`), silent no-op when disabled; engine NEVER writes `.claude/rules/` directly — every write is operator-AUQ-gated |
+| `session-metrics-write.md` | Phase 3.7 JSONL append, vault-mirror invocation, durable narrative mirror (`mirrorNarrative`, #675), and behavior matrix |
 | `phase-3-7a-recommendations.md` | Phase 3.7a full procedural body — computeV0Recommendation call, STATE.md field write, data source guarantee, error mode |
 | `phase-3-7a-recommendations.md` § 3.7b | Phase 3.7b full procedural body — `withDurableCommit` invocation for `sessions.jsonl` + `STATE.md` (#490 AC2), `enabled:false` local no-op, autopilot.jsonl exclusion note |
+| (inline) Phase 3.7c | Vault Board → Closed (#674) — `mirrorBoard({ explicitStatus: 'closed' })` transitions this repo's board row to `closed`; gated on `vault-integration.enabled`, generator-marked + idempotent, non-blocking, ordered after 3.7b and before 3.4/3.8 |
 | (inline) Phase 3.8 | Session Lock Release — `release()` call, silent-OK on mismatch/absent, non-fatal on fs-error, ordering note (after STATE.md writes, before Phase 4 commit staging) |
 
 ## Anti-Patterns
